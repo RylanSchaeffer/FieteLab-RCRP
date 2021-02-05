@@ -70,6 +70,8 @@ def run_envs():
             b=5,
             size=(num_clusters, num_parameters)).astype(np.float32)
 
+        print(10)
+
 
 if __name__ == '__main__':
     run_envs()
