@@ -1,3 +1,5 @@
 .idea/
 offline_clustering/data
 offline_clustering/envs
+*.npy
+*.pkl

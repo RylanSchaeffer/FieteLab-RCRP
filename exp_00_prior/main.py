@@ -1,4 +1,5 @@
 import joblib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -7,6 +8,11 @@ import scipy.special
 import scipy.stats
 import seaborn as sns
 from sympy.functions.combinatorial.numbers import stirling
+
+
+exp_dir = 'exp_00_prior'
+plot_dir = os.path.join(exp_dir, 'plots')
+os.makedirs(plot_dir, exist_ok=True)
 
 
 def draw_sample_from_crp(T, alpha):
@@ -30,7 +36,7 @@ num_samples = 5000  # number of samples to draw from CRP(alpha)
 alphas = [1.1, 10.01, 30.03]  # CRP parameter
 crp_samples_by_alpha = {}
 for alpha in alphas:
-    crp_empirics_path = f'crp_sample_{alpha}.npy'
+    crp_empirics_path = os.path.join(exp_dir, f'crp_sample_{alpha}.npy')
     if os.path.isfile(crp_empirics_path):
         crp_samples = np.load(crp_empirics_path)
         print(f'Loaded samples for {crp_empirics_path}')
@@ -57,6 +63,54 @@ def prob_kth_table_exists_at_time_t(t, k, alpha):
     return prob
 
 
+table_nums = 1 + np.arange(T)
+table_distributions_by_alpha = {}
+for alpha in alphas:
+    result = np.zeros(shape=T)
+    for k in table_nums:
+        result[k-1] = prob_kth_table_exists_at_time_t(t=T, k=k, alpha=alpha)
+    table_distributions_by_alpha[alpha] = result
+    plt.plot(table_nums, table_distributions_by_alpha[alpha], label=f'alpha={alpha}')
+plt.legend()
+plt.xlabel(f'Number of Tables after T={T} customers (K_T)')
+plt.ylabel('P(K_T = k)')
+plt.show()
+
+table_nums = 1 + np.arange(T)
+table_distributions_by_T = {}
+alpha = 30.03
+cmap = plt.get_cmap('jet_r')
+for t in table_nums:
+    result = np.zeros(shape=T)
+    for k in np.arange(1, 1+t):
+        result[k-1] = prob_kth_table_exists_at_time_t(t=t, k=k, alpha=alpha)
+    table_distributions_by_T[t] = result
+    if t == 1 or t == T:
+        plt.plot(table_nums,
+                 table_distributions_by_T[t],
+                 label=f'T={t}',
+                 color=cmap(float(t)/T))
+    else:
+        plt.plot(table_nums,
+                 table_distributions_by_T[t],
+                 # label=f'T={t}',
+                 color=cmap(float(t)/T))
+# https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
+norm = mpl.colors.Normalize(vmin=1, vmax=T)
+sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+# sm.set_array([])
+plt.colorbar(sm,
+             ticks=np.linspace(1, T, T),
+             boundaries=np.arange(-0.05, T + 0.1, .1))
+plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
+plt.xlabel(r'Number of Tables after T customers')
+plt.ylabel(r'P(Number of Tables after T customers)')
+plt.savefig(os.path.join(plot_dir, 'crt_table_distribution.png'),
+            bbox_inches='tight',
+            dpi=300)
+plt.show()
+
+
 def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
     expected_num_tables = min(2 * int(alpha * np.log(1 + T / alpha)), T)
     customer_seating_probs = np.zeros(shape=(T + 1, expected_num_tables + 1))
@@ -77,7 +131,7 @@ def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
 # TODO: how is R code so much faster
 analytical_table_occupancies_by_alpha = {}
 for alpha in alphas:
-    crp_analytics_path = f'crp_analytics_{alpha}.npy'
+    crp_analytics_path = os.path.join(exp_dir, f'crp_analytics_{alpha}.npy')
     if os.path.isfile(crp_analytics_path):
         analytical_table_occupancies = np.load(crp_analytics_path)
     else:
@@ -109,7 +163,7 @@ for alpha, crp_samples in crp_samples_by_alpha.items():
     table_cutoff = alpha * np.log(1 + T / alpha)
     empiric_table_occupancies_mean = np.mean(crp_samples, axis=0)
     empiric_table_occupancies_sem = scipy.stats.sem(crp_samples, axis=0)
-    fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(40, 10), sharey=True)
+    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(40, 10), sharey=True)
     fig.suptitle(f'alpha={alpha}')
     for i in range(200):
         axes[0].plot(table_nums, crp_samples[i, :], alpha=0.01, color='k')
@@ -131,12 +185,6 @@ for alpha, crp_samples in crp_samples_by_alpha.items():
     axes[0].set_ylabel('Mean Table Occupancy')
     axes[0].set_xlim(1, table_cutoff)
 
-    for i in range(20):
-        axes[1].plot(table_nums, crp_samples[i, :])
-    axes[1].set_xlabel('Table Number')
-    axes[1].set_ylabel('Mean Table Occupancy')
-    axes[1].set_xlim(1, table_cutoff)
-
     table_cutoff = 10
     table_idx = np.cumsum(np.ones_like(crp_samples[:, :table_cutoff]), axis=1)
     crp_samples_df = pd.DataFrame({
@@ -145,20 +193,20 @@ for alpha, crp_samples in crp_samples_by_alpha.items():
     sns.boxenplot(x='table_idx',
                   y='num_occupants',
                   data=crp_samples_df,
-                  ax=axes[2])
-    axes[2].set_xlabel('Table Number')
-    axes[2].set_ylabel('Number of Occupants')
-    axes[2].set_xlim(-1, table_cutoff)
+                  ax=axes[1])
+    axes[1].set_xlabel('Table Number')
+    axes[1].set_ylabel('Number of Occupants')
+    axes[1].set_xlim(-1, table_cutoff)
 
     sns.violinplot(x='table_idx',
                    y='num_occupants',
                    data=crp_samples_df,
-                   ax=axes[3])
-    axes[3].set_xlabel('Table Number')
-    axes[3].set_ylabel('Number of Occupants')
-    axes[3].set_xlim(-1, table_cutoff)
+                   ax=axes[2])
+    axes[2].set_xlabel('Table Number')
+    axes[2].set_ylabel('Number of Occupants')
+    axes[2].set_xlim(-1, table_cutoff)
 
-    plt.savefig(f'crp_{alpha}_summary.png',
-                # bbox_inches='tight',
+    plt.savefig(os.path.join(plot_dir, f'crp_{alpha}_summary.png'),
+                bbox_inches='tight',
                 dpi=300)
     plt.show()
