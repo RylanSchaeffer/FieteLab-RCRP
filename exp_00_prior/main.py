@@ -9,7 +9,6 @@ import scipy.stats
 import seaborn as sns
 from sympy.functions.combinatorial.numbers import stirling
 
-
 exp_dir = 'exp_00_prior'
 plot_dir = os.path.join(exp_dir, 'plots')
 os.makedirs(plot_dir, exist_ok=True)
@@ -68,7 +67,7 @@ table_distributions_by_alpha = {}
 for alpha in alphas:
     result = np.zeros(shape=T)
     for k in table_nums:
-        result[k-1] = prob_kth_table_exists_at_time_t(t=T, k=k, alpha=alpha)
+        result[k - 1] = prob_kth_table_exists_at_time_t(t=T, k=k, alpha=alpha)
     table_distributions_by_alpha[alpha] = result
     plt.plot(table_nums, table_distributions_by_alpha[alpha], label=f'alpha={alpha}')
 plt.legend()
@@ -82,29 +81,31 @@ alpha = 30.03
 cmap = plt.get_cmap('jet_r')
 for t in table_nums:
     result = np.zeros(shape=T)
-    for k in np.arange(1, 1+t):
-        result[k-1] = prob_kth_table_exists_at_time_t(t=t, k=k, alpha=alpha)
+    for k in np.arange(1, 1 + t):
+        result[k - 1] = prob_kth_table_exists_at_time_t(t=t, k=k, alpha=alpha)
     table_distributions_by_T[t] = result
     if t == 1 or t == T:
         plt.plot(table_nums,
                  table_distributions_by_T[t],
                  label=f'T={t}',
-                 color=cmap(float(t)/T))
+                 color=cmap(float(t) / T))
     else:
         plt.plot(table_nums,
                  table_distributions_by_T[t],
                  # label=f'T={t}',
-                 color=cmap(float(t)/T))
+                 color=cmap(float(t) / T))
 # https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
 norm = mpl.colors.Normalize(vmin=1, vmax=T)
 sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 # sm.set_array([])
-plt.colorbar(sm,
-             ticks=np.linspace(1, T, T),
-             boundaries=np.arange(-0.05, T + 0.1, .1))
+colorbar = plt.colorbar(sm,
+                        ticks=np.arange(1, T+1, 5),
+                        # boundaries=np.arange(-0.05, T + 0.1, .1)
+                        )
+colorbar.set_label('Number of Customers')
 plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
-plt.xlabel(r'Number of Tables after T customers')
-plt.ylabel(r'P(Number of Tables after T customers)')
+plt.xlabel(r'Number of Tables after T Customers')
+plt.ylabel(r'P(Number of Tables after T Customers)')
 plt.savefig(os.path.join(plot_dir, 'crt_table_distribution.png'),
             bbox_inches='tight',
             dpi=300)
