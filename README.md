@@ -1,5 +1,7 @@
 # FieteLab-ddCRP
 
+![](exp_00_prior/plots/crt_table_distribution.png)
+
 ## Setup
 
 After cloning the repository, install the requirements. The requirements are quite basic
@@ -17,3 +19,6 @@ subdirectory (e.g. `exp_00_prior/plots`) and then reproduces the plots in the pa
 
 `python3 exp_00_prior/main.py`
 
+## Contact
+
+Email Rylan Schaeffer at rylanschaeffer@gmail.com and cc Ila Fiete at fiete@mit.edu.
