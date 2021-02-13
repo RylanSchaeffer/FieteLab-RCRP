@@ -1,4 +1,4 @@
-# FieteLab-ddCRP
+# Online Inference in Chinese Restaurant Process Latent Variable Time Series
 
 ![](exp_00_prior/plots/crt_table_distribution.png)
 
@@ -21,4 +21,5 @@ subdirectory (e.g. `exp_00_prior/plots`) and then reproduces the plots in the pa
 
 ## Contact
 
-Email Rylan Schaeffer at rylanschaeffer@gmail.com and cc Ila Fiete at fiete@mit.edu.
+Questions? Comments? Interested in collaborating? Open an issue or 
+email Rylan Schaeffer at rylanschaeffer@gmail.com and cc Ila Fiete at fiete@mit.edu.
