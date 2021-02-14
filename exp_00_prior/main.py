@@ -14,22 +14,6 @@ plot_dir = os.path.join(exp_dir, 'plots')
 os.makedirs(plot_dir, exist_ok=True)
 
 
-def draw_sample_from_crp(T, alpha):
-    counts = np.zeros(shape=T)
-    counts[0] = 1
-    for t in range(1, T):
-        max_k = np.argmin(counts)  # first zero index
-        freq = counts.copy()
-        freq[max_k] = alpha
-        probs = freq / np.sum(freq)
-        z_t = np.random.choice(np.arange(max_k + 1), p=probs[:max_k + 1])
-        counts[z_t] += 1
-    return counts
-
-
-vectorized_draw_sample_from_crp = np.vectorize(draw_sample_from_crp,
-                                               otypes=[np.ndarray])
-
 T = 50  # max time
 num_samples = 5000  # number of samples to draw from CRP(alpha)
 alphas = [1.1, 10.01, 30.03]  # CRP parameter
@@ -50,12 +34,11 @@ for alpha in alphas:
     crp_samples_by_alpha[alpha] = crp_samples
 
 
-def prob_kth_table_exists_at_time_t(t, k, alpha):
+def chinese_table_restaurant_distribution(t, k, alpha):
     if k > t:
         prob = 0.
     else:
-        prob = 1.
-        prob *= scipy.special.gamma(alpha)
+        prob = scipy.special.gamma(alpha)
         prob *= stirling(n=t, k=k, kind=1, signed=False)
         prob /= scipy.special.gamma(alpha + t)
         prob *= np.power(alpha, k)
@@ -67,7 +50,7 @@ table_distributions_by_alpha = {}
 for alpha in alphas:
     result = np.zeros(shape=T)
     for k in table_nums:
-        result[k - 1] = prob_kth_table_exists_at_time_t(t=T, k=k, alpha=alpha)
+        result[k - 1] = chinese_table_restaurant_distribution(t=T, k=k, alpha=alpha)
     table_distributions_by_alpha[alpha] = result
     plt.plot(table_nums, table_distributions_by_alpha[alpha], label=f'alpha={alpha}')
 plt.legend()
@@ -82,7 +65,7 @@ cmap = plt.get_cmap('jet_r')
 for t in table_nums:
     result = np.zeros(shape=T)
     for k in np.arange(1, 1 + t):
-        result[k - 1] = prob_kth_table_exists_at_time_t(t=t, k=k, alpha=alpha)
+        result[k - 1] = chinese_table_restaurant_distribution(t=t, k=k, alpha=alpha)
     table_distributions_by_T[t] = result
     if t == 1 or t == T:
         plt.plot(table_nums,
@@ -121,8 +104,8 @@ def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
     for customer_num in range(3, T + 1):
         customer_seating_probs[customer_num, :] += customer_seating_probs[customer_num - 1, :]
         for table_num in range(1, expected_num_tables + 1):
-            diff = prob_kth_table_exists_at_time_t(t=customer_num - 1, k=table_num - 1, alpha=alpha) - \
-                   prob_kth_table_exists_at_time_t(t=customer_num - 2, k=table_num - 1, alpha=alpha)
+            diff = chinese_table_restaurant_distribution(t=customer_num - 1, k=table_num - 1, alpha=alpha) - \
+                   chinese_table_restaurant_distribution(t=customer_num - 2, k=table_num - 1, alpha=alpha)
             scaled_diff = alpha * diff / (alpha + customer_num - 1)
             customer_seating_probs[customer_num, table_num] += scaled_diff
     analytical_table_occupancies = np.sum(customer_seating_probs, axis=0)
@@ -141,22 +124,6 @@ for alpha in alphas:
             alpha=alpha)
         np.save(arr=analytical_table_occupancies, file=crp_analytics_path)
     analytical_table_occupancies_by_alpha[alpha] = analytical_table_occupancies
-
-# vectorized_prob_tth_customer_at_table_k = np.vectorize(prob_tth_customer_at_table_k,
-#                                                        otypes=[np.ndarray])
-
-
-# def compute_unsigned_stirling_nums_of_first_kind(T):
-#     unsigned_stirling_matrix = np.zeros((T, T), dtype=np.float64)
-#     unsigned_stirling_matrix[0, 0] = 1
-#     for i in range(1, T):
-#         unsigned_stirling_matrix[i, 0] = - i * unsigned_stirling_matrix[i - 1, 0]
-#         for j in range(1, T):
-#             unsigned_stirling_matrix[i, j] = unsigned_stirling_matrix[i - 1, j - 1] - i * unsigned_stirling_matrix[i - 1, j]
-#     return np.abs(unsigned_stirling_matrix)
-#
-#
-# unsigned_stirling_matrix = compute_unsigned_stirling_nums_of_first_kind(T=T)
 
 
 table_nums = 1 + np.arange(T)
