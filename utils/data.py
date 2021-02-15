@@ -27,8 +27,10 @@ def sample_sequence_from_crp(T: int,
     assert alpha > 0
     table_counts = np.zeros(shape=T, dtype=np.int)
     sampled_tables = np.zeros(shape=T, dtype=np.int)
+
+    # the first customer always goes at the first table
     table_counts[0] = 1
-    sampled_tables[0] = 1
+
     for t in range(1, T):
         max_k = np.argmin(table_counts)  # first zero index
         freq = table_counts.copy()
@@ -47,7 +49,8 @@ vectorized_sample_sequence_from_crp = np.vectorize(sample_sequence_from_crp,
 def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
                                               class_sampling: str = 'Uniform',
                                               alpha: float = None,
-                                              num_gaussians: int = None):
+                                              num_gaussians: int = None,
+                                              gaussian_params: dict = dict()):
     """
     Draw sample from mixture of Gaussians, using either uniform sampling or
     CRP sampling.
@@ -58,6 +61,7 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
     :param class_sampling:
     :param alpha:
     :param num_gaussians:
+    :param gaussian_params:
     :return:
         assigned_table_seq: NumPy array with shape (seq_len,) of (integer) sampled classes
         gaussian_samples_seq: NumPy array with shape (seq_len, dim of Gaussian) of
@@ -79,7 +83,8 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
         raise ValueError(f'Impermissible class sampling: {class_sampling}')
 
     mixture_of_gaussians = generate_mixture_of_gaussians(
-        num_gaussians=num_gaussians)
+        num_gaussians=num_gaussians,
+        **gaussian_params)
 
     # create sequence of Gaussian samples from (mean_t, cov_t)
     gaussian_samples_seq = np.array([
@@ -87,9 +92,14 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
                                       cov=mixture_of_gaussians['covs'][assigned_table])
         for assigned_table in assigned_table_seq])
 
+    # convert assigned table sequence to one-hot codes
+    assigned_table_seq_one_hot = np.zeros((seq_len, seq_len))
+    assigned_table_seq_one_hot[np.arange(seq_len), assigned_table_seq] = 1.
+
     result = dict(
         mixture_of_gaussians=mixture_of_gaussians,
         assigned_table_seq=assigned_table_seq,
+        assigned_table_seq_one_hot=assigned_table_seq_one_hot,
         gaussian_samples_seq=gaussian_samples_seq
     )
 

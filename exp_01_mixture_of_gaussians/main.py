@@ -1,10 +1,12 @@
 import numpy as np
 import os
 
+from exp_01_mixture_of_gaussians.plot import plot_inference_results
+
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference import bayesian_recursion
-from exp_01_mixture_of_gaussians.plot import plot_sample_from_mixture_of_gaussians
+from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline
+from utils.metrics import normalized_mutual_information
 
 
 def main():
@@ -19,12 +21,23 @@ def main():
         seq_len=100,
         class_sampling='CRP',
         alpha=alpha,
+        gaussian_params=dict(gaussian_cov_scaling=0.3,
+                             gaussian_mean_prior_cov_scaling=6.)
     )
 
-    # plot_sample_from_mixture_of_gaussians(
-    #     assigned_table_seq=sampled_mog_results['assigned_table_seq'],
-    #     gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
-    #     plot_dir=plot_dir)
+    lambd = 1.4
+    dp_means_online_results = dp_means_online(
+        observations=sampled_mog_results['gaussian_samples_seq'],
+        lambd=lambd)
+
+    plot_inference_results(
+        sampled_mog_results=sampled_mog_results,
+        inference_results=dp_means_online_results,
+        inference_alg=f'dp_means_online_lambda={lambd}',
+        plot_dir=plot_dir)
+
+    # normalized_mutual_information(assigned_table_seq_one_hot=sampled_mog_results['assigned_table_seq_one_hot'],
+    #                               table_posteriors_one_hot=dp_means_online_results['table_assignment_posteriors'])
 
     def likelihood_fn(observation, parameters):
         # create new mean for new table, centered at that point
@@ -88,46 +101,11 @@ def main():
         likelihood_fn=likelihood_fn,
         update_parameters_fn=update_parameters_fn)
 
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-
-    fig, axes = plt.subplots(nrows=1,
-                             ncols=4,
-                             figsize=(16, 4))
-
-    ax_idx = 0
-    ax = axes[ax_idx]
-    ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
-               sampled_mog_results['gaussian_samples_seq'][:, 1],
-               c=sampled_mog_results['assigned_table_seq'])
-    ax.set_title('Ground Truth Data')
-
-    ax_idx += 1
-    ax = axes[ax_idx]
-    sns.heatmap(bayesian_recursion_results['table_assignment_priors'][:, :10],
-                ax=ax,
-                cmap='Blues')
-    ax.set_title(r'$P(z_t|o_{<t})$')
-    ax.set_ylabel('Customer Number')
-    ax.set_xlabel('Table Number')
-
-    ax_idx += 1
-    ax = axes[ax_idx]
-    sns.heatmap(bayesian_recursion_results['table_assignment_posteriors'][:, :10],
-                ax=ax,
-                cmap='Blues')
-    ax.set_title(r'$P(z_t|o_{\leq t})$')
-    ax.set_ylabel('Customer Number')
-    ax.set_xlabel('Table Number')
-
-    ax_idx += 1
-    ax = axes[ax_idx]
-    ax.scatter(bayesian_recursion_results['parameters']['means'][:, 0],
-               bayesian_recursion_results['parameters']['means'][:, 1],
-               s=bayesian_recursion_results['table_assignment_posteriors_running_sum'][-1, :])
-    ax.set_title(r'Cluster Centroids $\mu_z$ (Scaled by Total Mass)')
-    plt.show()
-    print(10)
+    plot_inference_results(
+        sampled_mog_results=sampled_mog_results,
+        inference_results=bayesian_recursion_results,
+        inference_alg=f'bayesian_recursion_alpha={alpha}',
+        plot_dir=plot_dir)
 
 
 if __name__ == '__main__':

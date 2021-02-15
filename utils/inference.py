@@ -91,55 +91,73 @@ def bayesian_recursion(observations,
     return bayesian_recursion_results
 
 
-def DP_means_online(class_seq, gaussian_samples_seq, lambd):
+def dp_means_online(observations,
+                    lambd: float):
+
+    assert lambd > 0
+
     # dimensionality of points
-    dim = gaussian_samples_seq.shape[1]
+    num_obs, obs_dim = observations.shape
+    max_num_clusters = num_obs
     num_clusters = 1
 
     # centroids of clusters
-    mu = np.zeros((num_clusters, dim))
+    means = np.zeros(shape=(max_num_clusters, obs_dim))
 
     # initial cluster = first data point
-    mu[0, :] = gaussian_samples_seq[0, :]
+    means[0, :] = observations[0, :]
 
     # empirical online classification labels
-    empirical_cluster_indicator = np.zeros(1)
-    empirical_cluster_indicator[0] = 1
+    table_assignments = np.zeros((max_num_clusters, max_num_clusters))
+    table_assignments[0, 0] = 1
 
-    # history of all samples seen till current time
-    history = gaussian_samples_seq[0, :]
-    for iter in range(1, len(gaussian_samples_seq)):
-
-        # add new sample to history:
-        history = np.concatenate((history, gaussian_samples_seq[iter, :]), axis=0)
+    for obs_idx in range(1, len(observations)):
 
         # compute distance of new sample from previous centroids:
-        distances = np.linalg.norm(gaussian_samples_seq[iter, :] - mu)
+        distances = np.linalg.norm(observations[obs_idx, :] - means[:num_clusters, :],
+                                   axis=1)
+        assert len(distances) == num_clusters
 
         # if smallest distance greater than cutoff lambda, create new cluster:
-        if (np.min(distances) > lambd):
+        if np.min(distances) > lambd:
 
             # increment number of clusters by 1:
             num_clusters += 1
 
             # centroid of new cluster = new sample
-            mu = np.concatenate((mu, gaussian_samples_seq[iter, :]), axis=0)
-            empirical_cluster_indicator = np.concatenate((empirical_cluster_indicator, num_clusters))
+            means[num_clusters-1, :] = observations[obs_idx, :]
+            table_assignments[obs_idx, num_clusters - 1] = 1.
 
         else:
 
             # If the smallest distance is less than the cutoff lambda, assign point
             # to one of the older clusters (add 1 because numbering starts at 0):
             assigned_cluster = np.argmin(distances)
-            empirical_cluster_indicator = np.concatenate((empirical_cluster_indicator, assigned_cluster + 1))
+            table_assignments[obs_idx, assigned_cluster] = 1.
 
             # get indices of all older points assigned to that cluster:
-            older_points_in_assigned_cluster_indices = empirical_cluster_indicator == assigned_cluster
-            older_points_in_assigned_cluster = history[older_points_in_assigned_cluster_indices, :]
+            older_points_in_assigned_cluster_indices = table_assignments[:, assigned_cluster] == 1
+            older_points_in_assigned_cluster = observations[older_points_in_assigned_cluster_indices, :]
+
+            assert older_points_in_assigned_cluster.shape[0] > 1
 
             # recompute centroid incorporating this new sample:
-            mu[assigned_cluster, :] = np.mean(
-                np.concatenate((gaussian_samples_seq[iter, :], older_points_in_assigned_cluster), axis=0))
+            means[assigned_cluster, :] = np.mean(older_points_in_assigned_cluster,
+                                                 axis=0)
 
-            # returns classes assigned and centroids of corresponding classes
-        return empirical_cluster_indicator, mu
+    table_assignment_posteriors_running_sum = np.cumsum(np.copy(table_assignments), axis=0)
+
+    # returns classes assigned and centroids of corresponding classes
+    dp_means_online_results = dict(
+        # table_assignment_priors=np.full_like(table_assignments, fill_value=np.nan),
+        table_assignment_posteriors=table_assignments,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=dict(means=means),
+    )
+    return dp_means_online_results
+
+
+def dp_means_offline(gaussian_samples_seq,
+                     lambd: float):
+    raise NotImplementedError
+
