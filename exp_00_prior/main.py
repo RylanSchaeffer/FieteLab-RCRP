@@ -17,6 +17,11 @@ os.makedirs(plot_dir, exist_ok=True)
 T = 50  # max time
 num_samples = 5000  # number of samples to draw from CRP(alpha)
 alphas = [1.1, 10.01, 30.03]  # CRP parameter
+alphas_color_map = {
+    1.1:    'tab:blue',
+    10.01:  'tab:orange',
+    30.03:  'tab:green'
+}
 crp_samples_by_alpha = {}
 for alpha in alphas:
     crp_empirics_path = os.path.join(exp_dir, f'crp_sample_{alpha}.npy')
@@ -137,13 +142,14 @@ for ax_idx, (alpha, crp_samples) in enumerate(crp_samples_by_alpha.items()):
                           y=empiric_table_occupancies_mean_by_repeat,
                           yerr=empiric_table_occupancies_sem,
                           # linewidth=2,
-                          # fmt='none',
+                          fmt='--',
+                          color='k',
                           label=f'Empiric (N={num_samples})')
     axes[ax_idx].scatter(table_nums[:len(analytical_table_occupancies_by_alpha[alpha])],
                          analytical_table_occupancies_by_alpha[alpha],
                          # '--',
                          marker='d',
-                         color='orange',
+                         color=alphas_color_map[alpha],
                          # linewidth=2,
                          label=f'Analytic')
     print(f'Plotted alpha={alpha}')
