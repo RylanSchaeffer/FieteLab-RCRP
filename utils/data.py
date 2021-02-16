@@ -25,25 +25,25 @@ def generate_mixture_of_gaussians(num_gaussians: int = 3,
 def sample_sequence_from_crp(T: int,
                              alpha: float):
     assert alpha > 0
-    table_counts = np.zeros(shape=T, dtype=np.int)
+    table_occupancies = np.zeros(shape=T, dtype=np.int)
     sampled_tables = np.zeros(shape=T, dtype=np.int)
 
     # the first customer always goes at the first table
-    table_counts[0] = 1
+    table_occupancies[0] = 1
 
     for t in range(1, T):
-        max_k = np.argmin(table_counts)  # first zero index
-        freq = table_counts.copy()
+        max_k = np.argmin(table_occupancies)  # first zero index
+        freq = table_occupancies.copy()
         freq[max_k] = alpha
         probs = freq / np.sum(freq)
         z_t = np.random.choice(np.arange(max_k + 1), p=probs[:max_k + 1])
         sampled_tables[t] = z_t
-        table_counts[z_t] += 1
-    return table_counts, sampled_tables
+        table_occupancies[z_t] += 1
+    return table_occupancies, sampled_tables
 
 
 vectorized_sample_sequence_from_crp = np.vectorize(sample_sequence_from_crp,
-                                                   otypes=[np.ndarray])
+                                                   otypes=[np.ndarray, np.ndarray])
 
 
 def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
