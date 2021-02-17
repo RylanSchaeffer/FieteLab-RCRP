@@ -10,8 +10,11 @@ def plot_sample_from_mixture_of_gaussians(assigned_table_seq,
     plt.scatter(x=gaussian_samples_seq[:, 0],
                 y=gaussian_samples_seq[:, 1],
                 c=assigned_table_seq)
-    plt.savefig(os.path.join(plot_dir, 'sample_from_mixture_of_gaussians.png'))
-    plt.show()
+    plt.savefig(os.path.join(plot_dir, 'sample_from_mixture_of_gaussians.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
 
 
 def plot_inference_results(sampled_mog_results: dict,
@@ -81,10 +84,43 @@ def plot_inference_results(sampled_mog_results: dict,
     ax = axes[ax_idx]
     ax.scatter(inference_results['parameters']['means'][:, 0],
                inference_results['parameters']['means'][:, 1],
-               s=inference_results['table_assignment_posteriors_running_sum'][-1, :])
+               s=2 * inference_results['table_assignment_posteriors_running_sum'][-1, :],
+               facecolors='none',
+               edgecolors='k')
     ax.set_xlim(xmin=xmin, xmax=xmax)
     ax.set_ylim(ymin=ymin, ymax=ymax)
-    ax.set_title(r'Cluster Centroids $\mu_z$ (Scaled by Total Mass)')
+    ax.set_title(r'Cluster Centroids $\mu_z$')
 
-    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_results.png'))
-    plt.show()
+    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_results.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+
+def plot_num_clusters_by_param(inference_algs_results: dict,
+                               plot_dir: str,
+                               num_clusters: int):
+
+    for inference_alg, inference_alg_results in inference_algs_results.items():
+
+        plt.plot(list(inference_alg_results['num_clusters_by_param'].keys()),
+                 list(inference_alg_results['num_clusters_by_param'].values()),
+                 label=inference_alg)
+
+    plt.xlabel(r'Concentration Parameter')
+    plt.ylabel('Number of Clusters')
+    plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
+    plt.legend()
+
+    plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+
+
+# might be good for metrics
+# https://dp.tdhopper.com/collapsed-gibbs/
+

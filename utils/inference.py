@@ -1,4 +1,6 @@
 import numpy as np
+import pymc3 as pm
+from theano import tensor as tt
 
 
 def bayesian_recursion(observations,
@@ -91,9 +93,8 @@ def bayesian_recursion(observations,
     return bayesian_recursion_results
 
 
-def dp_means_online(observations,
+def dp_means_online(observations: np.ndarray,
                     lambd: float):
-
     assert lambd > 0
 
     # dimensionality of points
@@ -125,7 +126,7 @@ def dp_means_online(observations,
             num_clusters += 1
 
             # centroid of new cluster = new sample
-            means[num_clusters-1, :] = observations[obs_idx, :]
+            means[num_clusters - 1, :] = observations[obs_idx, :]
             table_assignments[obs_idx, num_clusters - 1] = 1.
 
         else:
@@ -141,9 +142,13 @@ def dp_means_online(observations,
 
             assert older_points_in_assigned_cluster.shape[0] > 1
 
-            # recompute centroid incorporating this new sample:
-            means[assigned_cluster, :] = np.mean(older_points_in_assigned_cluster,
-                                                 axis=0)
+            # recompute centroid incorporating this new sample
+            diff = observations[obs_idx, :] - means[assigned_cluster, :]
+            num_points_in_assigned_cluster_indices = np.sum(older_points_in_assigned_cluster_indices)
+            means[assigned_cluster, :] += diff / num_points_in_assigned_cluster_indices
+
+            # means[assigned_cluster, :] = np.mean(older_points_in_assigned_cluster,
+            #                                      axis=0)
 
     table_assignment_posteriors_running_sum = np.cumsum(np.copy(table_assignments), axis=0)
 
@@ -157,7 +162,122 @@ def dp_means_online(observations,
     return dp_means_online_results
 
 
-def dp_means_offline(gaussian_samples_seq,
+def dp_means_offline(observations,
+                     num_passes: int,
                      lambd: float):
-    raise NotImplementedError
+    assert lambd > 0
 
+    # dimensionality of points
+    num_obs, obs_dim = observations.shape
+    max_num_clusters = num_obs
+    num_clusters = 1
+
+    # centroids of clusters
+    means = np.zeros(shape=(max_num_clusters, obs_dim))
+
+    # initial cluster = first data point
+    means[0, :] = observations[0, :]
+
+    # empirical online classification labels
+    table_assignments = np.zeros((max_num_clusters, max_num_clusters))
+    table_assignments[0, 0] = 1
+
+    for pass_idx in range(num_passes):
+        for obs_idx in range(1, len(observations)):
+
+            # compute distance of new sample from previous centroids:
+            distances = np.linalg.norm(observations[obs_idx, :] - means[:num_clusters, :],
+                                       axis=1)
+            assert len(distances) == num_clusters
+
+            # if smallest distance greater than cutoff lambda, create new cluster:
+            if np.min(distances) > lambd:
+
+                # increment number of clusters by 1:
+                num_clusters += 1
+
+                # centroid of new cluster = new sample
+                means[num_clusters - 1, :] = observations[obs_idx, :]
+                table_assignments[obs_idx, num_clusters - 1] = 1.
+
+            else:
+
+                # If the smallest distance is less than the cutoff lambda, assign point
+                # to one of the older clusters
+                assigned_cluster = np.argmin(distances)
+                table_assignments[obs_idx, assigned_cluster] = 1.
+
+        for cluster_idx in range(num_clusters):
+            # get indices of all observations assigned to that cluster:
+            indices_of_points_in_assigned_cluster = table_assignments[:, cluster_idx] == 1
+
+            # get observations assigned to that cluster
+            points_in_assigned_cluster = observations[indices_of_points_in_assigned_cluster, :]
+
+            assert points_in_assigned_cluster.shape[0] >= 1
+
+            # recompute centroid incorporating this new sample
+            means[cluster_idx, :] = np.mean(points_in_assigned_cluster,
+                                            axis=0)
+
+    table_assignment_posteriors_running_sum = np.cumsum(np.copy(table_assignments), axis=0)
+
+    # returns classes assigned and centroids of corresponding classes
+    dp_means_offline_results = dict(
+        table_assignment_posteriors=table_assignments,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=dict(means=means),
+    )
+    return dp_means_offline_results
+
+
+def gibbs_sampling(observations,
+                   num_iterations: int,
+                   gaussian_cov_scaling: int,
+                   gaussian_mean_prior_cov_scaling: float):
+    # https://docs.pymc.io/notebooks/dp_mix.html
+    num_obs, obs_dim = observations.shape
+    max_num_clusters = 13
+    table_assignments = np.zeros((max_num_clusters, max_num_clusters))
+    table_assignments[0, 0] = 1
+
+    def stick_breaking(beta):
+        portion_remaining = tt.concatenate([[1], tt.extra_ops.cumprod(1 - beta)[:-1]])
+        return beta * portion_remaining
+
+    with pm.Model() as model:
+        alpha = pm.Gamma("alpha", 1.0, 1.0)
+        beta = pm.Beta("beta", 1.0, alpha, shape=max_num_clusters)
+        w = pm.Deterministic("w", stick_breaking(beta))
+        # w = pm.Dirichlet('w', np.ones(max_num_clusters))
+        # cluster_means = []
+        # comp_dists = []
+        # for cluster_idx in range(max_num_clusters):
+        #     cluster_means.append(pm.MvNormal(f'mu_{cluster_idx}',
+        #                                      mu=pm.floatX(np.zeros(obs_dim)),
+        #                                      cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
+        #                                      shape=(obs_dim,)))
+        #     comp_dists.append(pm.MvNormal.dist(mu=cluster_means[cluster_idx],
+        #                                        cov=gaussian_cov_scaling * np.eye(obs_dim)))
+
+        cluster_means = pm.MvNormal(f'cluster_means',
+                                    mu=pm.floatX(np.zeros(obs_dim)),
+                                    cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
+                                    shape=(max_num_clusters, obs_dim))
+
+        comp_dists = pm.MvNormal.dist(mu=cluster_means,
+                                      cov=gaussian_cov_scaling * np.eye(obs_dim),
+                                      shape=(max_num_clusters, obs_dim))
+
+        # https://docs.pymc.io/api/distributions/mixture.html
+        obs = pm.Mixture(
+            "obs",
+            w=w,
+            comp_dists=comp_dists,
+            observed=observations,
+            shape=obs_dim)
+
+    with model:
+        trace = pm.sample(1000, tune=2500, chains=2, init="advi", target_accept=0.9, random_seed=0)
+
+    print(10)
