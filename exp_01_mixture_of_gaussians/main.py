@@ -126,7 +126,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
 
         return parameters
 
-    alphas = 0.01 + np.arange(0., 3.01, 0.5)
+    alphas = 0.01 + np.arange(0., 3.01, 0.25)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
@@ -171,7 +171,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
 
 def run_and_plot_dp_means_offline(sampled_mog_results,
                                   plot_dir):
-    lambdas = 0.01 + np.arange(0., 3.01, 0.5)
+    lambdas = 0.01 + np.arange(0., 3.01, 0.25)
     dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_offline')
     os.makedirs(dp_means_plot_dir, exist_ok=True)
     num_clusters_by_lambda = {}
@@ -209,7 +209,7 @@ def run_and_plot_dp_means_offline(sampled_mog_results,
 
 def run_and_plot_dp_means_online(sampled_mog_results,
                                  plot_dir):
-    lambdas = 0.01 + np.arange(0., 3.01, 0.5)
+    lambdas = 0.01 + np.arange(0., 3.01, 0.25)
     dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_online')
     os.makedirs(dp_means_plot_dir, exist_ok=True)
     num_clusters_by_lambda = {}
@@ -280,7 +280,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
 def run_and_plot_variational_bayes(sampled_mog_results,
                                    gaussian_mean_prior_cov_scaling,
                                    plot_dir, ):
-    alphas = 0.01 + np.arange(0., 3.01, 0.5)
+    alphas = 0.01 + np.arange(0., 3.01, 0.25)
     variational_plot_dir = os.path.join(plot_dir, 'variational')
     os.makedirs(variational_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
