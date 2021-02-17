@@ -1,6 +1,11 @@
 import numpy as np
 import pymc3 as pm
+from pymc3.math import logsumexp
+from pymc3.step_methods import smc
+from scipy.spatial.distance import cdist
+from sklearn.mixture import BayesianGaussianMixture
 from theano import tensor as tt
+from theano.tensor.nlinalg import det
 
 
 def bayesian_recursion(observations,
@@ -231,53 +236,137 @@ def dp_means_offline(observations,
     return dp_means_offline_results
 
 
-def gibbs_sampling(observations,
-                   num_iterations: int,
-                   gaussian_cov_scaling: int,
-                   gaussian_mean_prior_cov_scaling: float):
-    # https://docs.pymc.io/notebooks/dp_mix.html
+def nuts_sampling(observations,
+                  num_samples: int,
+                  alpha: float,
+                  gaussian_cov_scaling: int,
+                  gaussian_mean_prior_cov_scaling: float,
+                  burn_fraction: float = 0.25):
+    assert alpha > 0
+
     num_obs, obs_dim = observations.shape
-    max_num_clusters = 13
+    max_num_clusters = num_obs
     table_assignments = np.zeros((max_num_clusters, max_num_clusters))
     table_assignments[0, 0] = 1
 
+    # https://docs.pymc.io/notebooks/dp_mix.html
     def stick_breaking(beta):
         portion_remaining = tt.concatenate([[1], tt.extra_ops.cumprod(1 - beta)[:-1]])
         return beta * portion_remaining
 
+    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
+    # Log likelihood of normal distribution
+    def logp_normal(mu, tau, value):
+        # log probability of individual samples
+        k = tau.shape[0]
+        delta = lambda mu: value - mu
+        return (-1 / 2.0) * (
+                k * tt.log(2 * np.pi)
+                + tt.log(1.0 / det(tau))
+                + (delta(mu).dot(tau) * delta(mu)).sum(axis=1)
+        )
+
+    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
+    # Log likelihood of Gaussian mixture distribution
+    def logp_gmix(cluster_means, cluster_weights, tau):
+        def logp_(value):
+            logps = [tt.log(cluster_weights[i]) + logp_normal(mu, tau, value) for i, mu in enumerate(cluster_means)]
+            return tt.sum(logsumexp(tt.stacklists(logps)[:, :num_obs], axis=0))
+
+        return logp_
+
+    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
     with pm.Model() as model:
-        alpha = pm.Gamma("alpha", 1.0, 1.0)
-        beta = pm.Beta("beta", 1.0, alpha, shape=max_num_clusters)
-        w = pm.Deterministic("w", stick_breaking(beta))
-        # w = pm.Dirichlet('w', np.ones(max_num_clusters))
-        # cluster_means = []
-        # comp_dists = []
-        # for cluster_idx in range(max_num_clusters):
-        #     cluster_means.append(pm.MvNormal(f'mu_{cluster_idx}',
-        #                                      mu=pm.floatX(np.zeros(obs_dim)),
-        #                                      cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
-        #                                      shape=(obs_dim,)))
-        #     comp_dists.append(pm.MvNormal.dist(mu=cluster_means[cluster_idx],
-        #                                        cov=gaussian_cov_scaling * np.eye(obs_dim)))
+        pm_beta = pm.Beta("beta", 1.0, alpha, shape=max_num_clusters)
+        pm_w = pm.Deterministic("w", stick_breaking(pm_beta))
+        pm_cluster_means = [
+            pm.MvNormal(f'cluster_mean_{cluster_idx}',
+                        mu=pm.floatX(np.zeros(obs_dim)),
+                        cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
+                        shape=(obs_dim,))
+            for cluster_idx in range(max_num_clusters)]
+        pm_obs = pm.DensityDist('obs',
+                                logp_gmix(cluster_means=pm_cluster_means,
+                                          cluster_weights=pm_w,
+                                          tau=gaussian_cov_scaling * np.eye(obs_dim)),
+                                observed=observations)
 
-        cluster_means = pm.MvNormal(f'cluster_means',
-                                    mu=pm.floatX(np.zeros(obs_dim)),
-                                    cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
-                                    shape=(max_num_clusters, obs_dim))
+        pm_trace = pm.sample(draws=num_samples,
+                             tune=500,
+                             chains=4,
+                             target_accept=0.9,
+                             random_seed=1)
 
-        comp_dists = pm.MvNormal.dist(mu=cluster_means,
-                                      cov=gaussian_cov_scaling * np.eye(obs_dim),
-                                      shape=(max_num_clusters, obs_dim))
+    # TODO: figure out number of clusters
 
-        # https://docs.pymc.io/api/distributions/mixture.html
-        obs = pm.Mixture(
-            "obs",
-            w=w,
-            comp_dists=comp_dists,
-            observed=observations,
-            shape=obs_dim)
+    # figure out which point belongs to which cluster
+    # shape (max_num_clusters, num_samples, obs_dim)
+    cluster_means_samples = np.stack([pm_trace[f'cluster_mean_{cluster_idx}']
+                                      for cluster_idx in range(max_num_clusters)])
 
-    with model:
-        trace = pm.sample(1000, tune=2500, chains=2, init="advi", target_accept=0.9, random_seed=0)
+    # burn the first samples
+    cluster_means_samples = cluster_means_samples[:, int(burn_fraction * num_samples):, :]
+    cluster_means = np.mean(cluster_means_samples, axis=1)
 
-    print(10)
+    distance_obs_to_cluster_means = cdist(observations, cluster_means)
+    table_assignment_posteriors = np.exp(-distance_obs_to_cluster_means / 2)
+    table_assignment_posteriors *= np.power(2. * np.pi, -obs_dim / 2.)
+
+    # normalize to get posterior distributions
+    table_assignment_posteriors = np.divide(
+        table_assignment_posteriors,
+        np.sum(table_assignment_posteriors, axis=1)[:, np.newaxis])
+    assert np.allclose(np.sum(table_assignment_posteriors, axis=1), 1.)
+
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    params = dict(means=cluster_means,
+                  covs=np.repeat(np.eye(obs_dim)[np.newaxis, :, :],
+                                 repeats=num_obs,
+                                 axis=0))
+
+    gibbs_sampling_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=params)
+
+    return gibbs_sampling_results
+
+
+def variational_bayes(observations,
+                      alpha: float,
+                      gaussian_mean_prior_cov_scaling: float,
+                      max_iter: int = 100,
+                      n_init: int = 5):
+    assert alpha > 0
+
+    num_obs, obs_dim = observations.shape
+    var_dp_gmm = BayesianGaussianMixture(
+        n_components=num_obs,
+        covariance_type='tied',
+        max_iter=max_iter,
+        n_init=n_init,
+        init_params='random',
+        weight_concentration_prior_type='dirichlet_process',
+        weight_concentration_prior=alpha,
+        mean_precision_prior=1. / gaussian_mean_prior_cov_scaling,
+        random_state=0,
+    )
+    var_dp_gmm.fit(observations)
+    table_assignment_posteriors = var_dp_gmm.predict_proba(observations)
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    params = dict(means=var_dp_gmm.means_,
+                  covs=np.repeat(var_dp_gmm.covariances_[np.newaxis, :, :],
+                                 repeats=num_obs,
+                                 axis=0))
+
+    # returns classes assigned and centroids of corresponding classes
+    variational_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=params,
+    )
+    return variational_results

@@ -1,12 +1,13 @@
 import numpy as np
 import os
+import pandas as pd
 
 from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, gibbs_sampling
-from utils.metrics import normalized_mutual_information
+from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+from utils.metrics import score_predicted_clusters
 
 
 def main():
@@ -25,71 +26,46 @@ def main():
         alpha=None,
         num_gaussians=num_gaussians,
         gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
-                             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
-    )
+                             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
-    gibbs_sampling_results = run_and_plot_gibbs_sampling(sampled_mog_results=sampled_mog_results,
-                                                         plot_dir=plot_dir,
-                                                         gaussian_cov_scaling=gaussian_cov_scaling,
-                                                         gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
+    plot_sample_from_mixture_of_gaussians(assigned_table_seq=sampled_mog_results['assigned_table_seq'],
+                                          gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
+                                          plot_dir=plot_dir)
 
-    # plot_sample_from_mixture_of_gaussians(assigned_table_seq=sampled_mog_results['assigned_table_seq'],
-    #                                       gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
-    #                                       plot_dir=plot_dir)
+    # gibbs_sampling_results = run_and_plot_nuts_sampling(sampled_mog_results=sampled_mog_results,
+    #                                                     plot_dir=plot_dir,
+    #                                                     gaussian_cov_scaling=gaussian_cov_scaling,
+    #                                                     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
-    dp_means_offline_results = run_and_plot_dp_means_offline(sampled_mog_results=sampled_mog_results,
-                                                             plot_dir=plot_dir)
+    bayesian_recursion_results = run_and_plot_bayesian_recursion(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir)
 
-    dp_means_online_results = run_and_plot_dp_means_online(sampled_mog_results=sampled_mog_results,
-                                                           plot_dir=plot_dir)
+    dp_means_offline_results = run_and_plot_dp_means_offline(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir)
 
-    bayesian_recursion_results = run_and_plot_bayesian_recursion(sampled_mog_results=sampled_mog_results,
-                                                                 plot_dir=plot_dir)
+    dp_means_online_results = run_and_plot_dp_means_online(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir)
+
+    variational_bayes_results = run_and_plot_variational_bayes(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir,
+        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
     inference_algs_results = {
         'Bayesian Recursion': bayesian_recursion_results,
+        # 'NUTS Sampling': nuts_sampling_results,
         'DP-Means (Online)': dp_means_online_results,
         'DP-Means (Offline)': dp_means_offline_results,
+        'Variational Bayes': variational_bayes_results,
     }
 
-    plot_num_clusters_by_param(
+    plot_inference_algs_comparison(
         inference_algs_results=inference_algs_results,
         plot_dir=plot_dir,
-        num_clusters=num_gaussians)
-
-
-def run_and_plot_gibbs_sampling(sampled_mog_results,
-                                plot_dir,
-                                gaussian_cov_scaling,
-                                gaussian_mean_prior_cov_scaling):
-
-    gibbs_sampling_plot_dir = os.path.join(plot_dir, 'gibbs_sampling')
-    os.makedirs(gibbs_sampling_plot_dir, exist_ok=True)
-    num_clusters_by_iteration = {}
-
-    gibbs_sampling_results = gibbs_sampling(
-        observations=sampled_mog_results['gaussian_samples_seq'],
-        num_iterations=1000,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
-
-    num_clusters_by_lambda = np.sum(
-        np.sum(gibbs_sampling_results['table_assignment_posteriors'], axis=0) != 0)
-
-    plot_inference_results(
-        sampled_mog_results=sampled_mog_results,
-        inference_results=gibbs_sampling_results,
-        inference_alg='dp_means_online_lambda={:.2f}'.format(lambd),
-        plot_dir=gibbs_sampling_plot_dir)
-
-    gibbs_sampling_results = dict(
-        num_clusters_by_param=num_clusters_by_lambda
-    )
-
-    return gibbs_sampling_results
-
-    # normalized_mutual_information(assigned_table_seq_one_hot=sampled_mog_results['assigned_table_seq_one_hot'],
-    #                               table_posteriors_one_hot=gibbs_sampling_results['table_assignment_posteriors'])
+        sampled_mog_results=sampled_mog_results)
 
 
 def run_and_plot_bayesian_recursion(sampled_mog_results,
@@ -150,10 +126,11 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
 
         return parameters
 
-    alphas = 0.01 + np.arange(0., 2.01, 0.05)
+    alphas = 0.01 + np.arange(0., 3.01, 0.5)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
+    scores_by_alpha = {}
     for alpha in alphas:
         bayesian_recursion_results = bayesian_recursion(
             observations=sampled_mog_results['gaussian_samples_seq'],
@@ -170,14 +147,23 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
         num_tables = 1 + np.argmax(cumulative_final_mass_at_tables > 0.95)
         num_clusters_by_alpha[alpha] = num_tables
 
+        # record scores
+        scores = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=bayesian_recursion_results,
             inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
             plot_dir=bayesian_recursion_plot_dir)
 
+        print('Finished Bayesian recursion alpha={:.2f}'.format(alpha))
+
     bayesian_recursion_results = dict(
-        num_clusters_by_param=num_clusters_by_alpha
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T,
     )
 
     return bayesian_recursion_results
@@ -185,18 +171,26 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
 
 def run_and_plot_dp_means_offline(sampled_mog_results,
                                   plot_dir):
-    lambdas = 0.01 + np.arange(0., 2.01, 0.05)
+    lambdas = 0.01 + np.arange(0., 3.01, 0.5)
     dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_offline')
     os.makedirs(dp_means_plot_dir, exist_ok=True)
     num_clusters_by_lambda = {}
+    scores_by_lambda = {}
     for lambd in lambdas:
         dp_means_offline_results = dp_means_offline(
             observations=sampled_mog_results['gaussian_samples_seq'],
             num_passes=8,
             lambd=lambd)
 
+        # count number of clusters
         num_clusters_by_lambda[lambd] = np.sum(
             np.sum(dp_means_offline_results['table_assignment_posteriors'], axis=0) != 0)
+
+        # score clusters
+        scores = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=dp_means_offline_results['table_assignment_posteriors'])
+        scores_by_lambda[lambd] = scores
 
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
@@ -204,23 +198,32 @@ def run_and_plot_dp_means_offline(sampled_mog_results,
             inference_alg='dp_means_online_lambda={:.2f}'.format(lambd),
             plot_dir=dp_means_plot_dir)
 
-    dp_means_offline_results = dict(
-        num_clusters_by_param=num_clusters_by_lambda
-    )
+        print('Finished DP-Means Offline lambda={:.2f}'.format(lambd))
 
+    dp_means_offline_results = dict(
+        num_clusters_by_param=num_clusters_by_lambda,
+        scores_by_param=pd.DataFrame(scores_by_lambda).T,
+    )
     return dp_means_offline_results
 
 
 def run_and_plot_dp_means_online(sampled_mog_results,
                                  plot_dir):
-    lambdas = 0.01 + np.arange(0., 2.01, 0.05)
+    lambdas = 0.01 + np.arange(0., 3.01, 0.5)
     dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_online')
     os.makedirs(dp_means_plot_dir, exist_ok=True)
     num_clusters_by_lambda = {}
+    scores_by_lambda = {}
     for lambd in lambdas:
         dp_means_online_results = dp_means_online(
             observations=sampled_mog_results['gaussian_samples_seq'],
             lambd=lambd)
+
+        # score clusters
+        scores = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=dp_means_online_results['table_assignment_posteriors'])
+        scores_by_lambda[lambd] = scores
 
         num_clusters_by_lambda[lambd] = np.sum(
             np.sum(dp_means_online_results['table_assignment_posteriors'], axis=0) != 0)
@@ -231,14 +234,92 @@ def run_and_plot_dp_means_online(sampled_mog_results,
             inference_alg='dp_means_online_lambda={:.2f}'.format(lambd),
             plot_dir=dp_means_plot_dir)
 
+        print('Finished DP-Means Online lambda={:.2f}'.format(lambd))
+
     dp_means_online_results = dict(
-        num_clusters_by_param=num_clusters_by_lambda
+        num_clusters_by_param=num_clusters_by_lambda,
+        scores_by_param=pd.DataFrame(scores_by_lambda).T,
     )
 
     return dp_means_online_results
 
-    # normalized_mutual_information(assigned_table_seq_one_hot=sampled_mog_results['assigned_table_seq_one_hot'],
-    #                               table_posteriors_one_hot=dp_means_online_results['table_assignment_posteriors'])
+
+def run_and_plot_nuts_sampling(sampled_mog_results,
+                               plot_dir,
+                               gaussian_cov_scaling,
+                               gaussian_mean_prior_cov_scaling):
+    nuts_sampling_plot_dir = os.path.join(plot_dir, 'gibbs_sampling')
+    os.makedirs(nuts_sampling_plot_dir, exist_ok=True)
+    num_clusters_by_num_samples = {}
+
+    alpha = 1.5
+    possible_num_samples = np.arange(1000, 5001, 1000)
+    for num_samples in possible_num_samples:
+        nuts_sampling_results = nuts_sampling(
+            observations=sampled_mog_results['gaussian_samples_seq'],
+            num_samples=1000,
+            alpha=alpha,
+            gaussian_cov_scaling=gaussian_cov_scaling,
+            gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
+
+        num_clusters_by_num_samples[num_samples] = 10
+
+        plot_inference_results(
+            sampled_mog_results=sampled_mog_results,
+            inference_results=nuts_sampling_results,
+            inference_alg='gibbs_sampling={}'.format(num_samples),
+            plot_dir=nuts_sampling_plot_dir)
+
+    nuts_sampling_results = dict(
+        num_clusters_by_param=num_clusters_by_num_samples
+    )
+
+    return nuts_sampling_results
+
+
+def run_and_plot_variational_bayes(sampled_mog_results,
+                                   gaussian_mean_prior_cov_scaling,
+                                   plot_dir, ):
+    alphas = 0.01 + np.arange(0., 3.01, 0.5)
+    variational_plot_dir = os.path.join(plot_dir, 'variational')
+    os.makedirs(variational_plot_dir, exist_ok=True)
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    for alpha in alphas:
+        variational_bayes_results = variational_bayes(
+            observations=sampled_mog_results['gaussian_samples_seq'],
+            alpha=alpha,
+            gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
+
+        # order the tables by mass
+        total_mass = sampled_mog_results['gaussian_samples_seq'].shape[0]
+        final_mass_at_tables = variational_bayes_results['table_assignment_posteriors_running_sum'][-1, :]
+        sorted_fraction_final_mass_at_tables = np.sort(final_mass_at_tables / total_mass)[::-1]
+        # find number of tables to reach 95% mass
+        cumulative_final_mass_at_tables = np.cumsum(sorted_fraction_final_mass_at_tables)
+        num_tables = 1 + np.argmax(cumulative_final_mass_at_tables > 0.95)
+        num_clusters_by_alpha[alpha] = num_tables
+
+        # score clusters
+        scores = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=variational_bayes_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
+        plot_inference_results(
+            sampled_mog_results=sampled_mog_results,
+            inference_results=variational_bayes_results,
+            inference_alg='variational_bayes={:.2f}'.format(alpha),
+            plot_dir=variational_plot_dir)
+
+        print('Finished Variational Bayes alpha={:.2f}'.format(alpha))
+
+    variational_bayes_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T,
+    )
+
+    return variational_bayes_results
 
 
 if __name__ == '__main__':

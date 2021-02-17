@@ -39,24 +39,24 @@ def plot_inference_results(sampled_mog_results: dict,
 
     fig, axes = plt.subplots(nrows=1,
                              ncols=4,
-                             figsize=(16, 4))
+                             figsize=(20, 4))
 
     ax_idx = 0
-    ax = axes[ax_idx]
-    ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
-               sampled_mog_results['gaussian_samples_seq'][:, 1],
-               c=sampled_mog_results['assigned_table_seq'])
-    ax.set_xlim(xmin=xmin, xmax=xmax)
-    ax.set_ylim(ymin=ymin, ymax=ymax)
-    ax.set_title('Ground Truth Data')
+    # ax = axes[ax_idx]
+    # ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
+    #            sampled_mog_results['gaussian_samples_seq'][:, 1],
+    #            c=sampled_mog_results['assigned_table_seq'])
+    # ax.set_xlim(xmin=xmin, xmax=xmax)
+    # ax.set_ylim(ymin=ymin, ymax=ymax)
+    # ax.set_title('Ground Truth Data')
 
-    ax_idx += 1
+    # ax_idx += 1
     ax = axes[ax_idx]
     if 'table_assignment_priors' in inference_results:
         sns.heatmap(inference_results['table_assignment_priors'][:, :num_tables_to_plot],
                     ax=ax,
                     cmap='Blues',
-                    xticklabels=1+np.arange(num_tables_to_plot),
+                    xticklabels=1 + np.arange(num_tables_to_plot),
                     # yticklabels=yticklabels
                     mask=np.isnan(inference_results['table_assignment_priors'][:, :num_tables_to_plot]),
                     vmin=0.,
@@ -71,7 +71,7 @@ def plot_inference_results(sampled_mog_results: dict,
     sns.heatmap(inference_results['table_assignment_posteriors'][:, :num_tables_to_plot],
                 ax=ax,
                 cmap='Blues',
-                xticklabels=1+np.arange(num_tables_to_plot),
+                xticklabels=1 + np.arange(num_tables_to_plot),
                 # yticklabels=yticklabels
                 vmin=0.,
                 vmax=1.
@@ -80,6 +80,7 @@ def plot_inference_results(sampled_mog_results: dict,
     ax.set_ylabel('Observation Index')
     ax.set_xlabel('Cluster Index')
 
+    # plot means of distributions
     ax_idx += 1
     ax = axes[ax_idx]
     ax.scatter(inference_results['parameters']['means'][:, 0],
@@ -91,6 +92,18 @@ def plot_inference_results(sampled_mog_results: dict,
     ax.set_ylim(ymin=ymin, ymax=ymax)
     ax.set_title(r'Cluster Centroids $\mu_z$')
 
+    # plot predicted cluster labels
+    ax_idx += 1
+    ax = axes[ax_idx]
+    pred_cluster_labels = np.argmax(inference_results['table_assignment_posteriors'],
+                                    axis=1)
+    ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
+               sampled_mog_results['gaussian_samples_seq'][:, 1],
+               c=pred_cluster_labels)
+    ax.set_xlim(xmin=xmin, xmax=xmax)
+    ax.set_ylim(ymin=ymin, ymax=ymax)
+    ax.set_title(r'Predicted Cluster Labels')
+
     plt.savefig(os.path.join(plot_dir, f'{inference_alg}_results.png'),
                 bbox_inches='tight',
                 dpi=300)
@@ -98,12 +111,51 @@ def plot_inference_results(sampled_mog_results: dict,
     plt.close()
 
 
+def plot_inference_algs_comparison(inference_algs_results: dict,
+                                   sampled_mog_results: dict,
+                                   plot_dir: str):
+    num_clusters = len(np.unique(sampled_mog_results['assigned_table_seq']))
+
+    plot_num_clusters_by_param(
+        inference_algs_results=inference_algs_results,
+        plot_dir=plot_dir,
+        num_clusters=num_clusters)
+
+    plot_inference_algs_scores_by_param(
+        inference_algs_results=inference_algs_results,
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir)
+
+    print(10)
+
+
+def plot_inference_algs_scores_by_param(inference_algs_results: dict,
+                                        sampled_mog_results: dict,
+                                        plot_dir: str):
+
+    score_strs = inference_algs_results[list(inference_algs_results.keys())[0]][
+        'scores_by_param'].columns.values
+
+    # for each scoring function, plot score (y) vs parameter (x)
+    for score_str in score_strs:
+        for inference_alg_str, inference_algs_values in inference_algs_results.items():
+            plt.plot(inference_algs_values['scores_by_param'].index,
+                     inference_algs_values['scores_by_param'][score_str],
+                     label=inference_alg_str)
+        plt.legend()
+        plt.xlabel('Inference Alg Parameter')
+        plt.ylabel(score_str)
+        plt.savefig(os.path.join(plot_dir, f'comparison_score={score_str}.png'),
+                    bbox_inches='tight',
+                    dpi=300)
+        # plt.show()
+        plt.close()
+
+
 def plot_num_clusters_by_param(inference_algs_results: dict,
                                plot_dir: str,
                                num_clusters: int):
-
     for inference_alg, inference_alg_results in inference_algs_results.items():
-
         plt.plot(list(inference_alg_results['num_clusters_by_param'].keys()),
                  list(inference_alg_results['num_clusters_by_param'].values()),
                  label=inference_alg)
@@ -118,9 +170,3 @@ def plot_num_clusters_by_param(inference_algs_results: dict,
                 dpi=300)
     # plt.show()
     plt.close()
-
-
-
-# might be good for metrics
-# https://dp.tdhopper.com/collapsed-gibbs/
-
