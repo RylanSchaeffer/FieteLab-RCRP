@@ -1,7 +1,6 @@
 import numpy as np
 import pymc3 as pm
 from pymc3.math import logsumexp
-from pymc3.step_methods import smc
 from scipy.spatial.distance import cdist
 from sklearn.mixture import BayesianGaussianMixture
 from theano import tensor as tt

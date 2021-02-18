@@ -38,49 +38,20 @@ def plot_inference_results(sampled_mog_results: dict,
     ymax = 1.1 * np.max(sampled_mog_results['gaussian_samples_seq'][:, 1])
 
     fig, axes = plt.subplots(nrows=1,
-                             ncols=4,
-                             figsize=(20, 4))
+                             ncols=3,
+                             figsize=(12, 4))
 
     ax_idx = 0
-    # ax = axes[ax_idx]
-    # ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
-    #            sampled_mog_results['gaussian_samples_seq'][:, 1],
-    #            c=sampled_mog_results['assigned_table_seq'])
-    # ax.set_xlim(xmin=xmin, xmax=xmax)
-    # ax.set_ylim(ymin=ymin, ymax=ymax)
-    # ax.set_title('Ground Truth Data')
-
-    # ax_idx += 1
+    # plot ground truth data
     ax = axes[ax_idx]
-    if 'table_assignment_priors' in inference_results:
-        sns.heatmap(inference_results['table_assignment_priors'][:, :num_tables_to_plot],
-                    ax=ax,
-                    cmap='Blues',
-                    xticklabels=1 + np.arange(num_tables_to_plot),
-                    # yticklabels=yticklabels
-                    mask=np.isnan(inference_results['table_assignment_priors'][:, :num_tables_to_plot]),
-                    vmin=0.,
-                    vmax=1.,
-                    )
-        ax.set_title(r'$P(z_t|o_{<t})$')
-        ax.set_ylabel('Observation Index')
-        ax.set_xlabel('Cluster Index')
+    ax.scatter(sampled_mog_results['gaussian_samples_seq'][:, 0],
+               sampled_mog_results['gaussian_samples_seq'][:, 1],
+               c=sampled_mog_results['assigned_table_seq'])
+    ax.set_xlim(xmin=xmin, xmax=xmax)
+    ax.set_ylim(ymin=ymin, ymax=ymax)
+    ax.set_title('Ground Truth Data')
 
-    ax_idx += 1
-    ax = axes[ax_idx]
-    sns.heatmap(inference_results['table_assignment_posteriors'][:, :num_tables_to_plot],
-                ax=ax,
-                cmap='Blues',
-                xticklabels=1 + np.arange(num_tables_to_plot),
-                # yticklabels=yticklabels
-                vmin=0.,
-                vmax=1.
-                )
-    ax.set_title(r'$P(z_t|o_{\leq t})$')
-    ax.set_ylabel('Observation Index')
-    ax.set_xlabel('Cluster Index')
-
-    # plot means of distributions
+    # plot cluster centroids
     ax_idx += 1
     ax = axes[ax_idx]
     ax.scatter(inference_results['parameters']['means'][:, 0],
@@ -104,7 +75,49 @@ def plot_inference_results(sampled_mog_results: dict,
     ax.set_ylim(ymin=ymin, ymax=ymax)
     ax.set_title(r'Predicted Cluster Labels')
 
-    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_results.png'),
+    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_clusters.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+    fig, axes = plt.subplots(nrows=1,
+                             ncols=2,
+                             figsize=(8, 4))
+
+    ax_idx = 0
+    # plot prior table assignments
+    ax = axes[ax_idx]
+    if 'table_assignment_priors' in inference_results:
+        sns.heatmap(inference_results['table_assignment_priors'][:, :num_tables_to_plot],
+                    ax=ax,
+                    cmap='Blues',
+                    xticklabels=1 + np.arange(num_tables_to_plot),
+                    # yticklabels=yticklabels
+                    mask=np.isnan(inference_results['table_assignment_priors'][:, :num_tables_to_plot]),
+                    vmin=0.,
+                    vmax=1.,
+                    )
+        ax.set_title(r'$P(z_t|o_{<t})$')
+        ax.set_ylabel('Observation Index')
+        ax.set_xlabel('Cluster Index')
+
+    # plot posterior table assignments
+    ax_idx += 1
+    ax = axes[ax_idx]
+    sns.heatmap(inference_results['table_assignment_posteriors'][:, :num_tables_to_plot],
+                ax=ax,
+                cmap='Blues',
+                xticklabels=1 + np.arange(num_tables_to_plot),
+                # yticklabels=yticklabels
+                vmin=0.,
+                vmax=1.
+                )
+    ax.set_title(r'$P(z_t|o_{\leq t})$')
+    ax.set_ylabel('Observation Index')
+    ax.set_xlabel('Cluster Index')
+
+    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_assignments.png'),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()
