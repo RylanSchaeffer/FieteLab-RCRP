@@ -6,6 +6,7 @@ from sklearn.metrics import adjusted_rand_score, rand_score, adjusted_mutual_inf
 def score_predicted_clusters(table_assignment_posteriors, true_cluster_labels):
     # table assignment posteriors is square matrix
     # first dimension is num obs, second dimension is number clusters
+    # (i, j) element is probability the ith observation belongs to jth cluster
 
     pred_cluster_labels = np.argmax(table_assignment_posteriors,
                                     axis=1)
@@ -29,7 +30,7 @@ def score_predicted_clusters(table_assignment_posteriors, true_cluster_labels):
         'Normalized Mutual Info Score': norm_mut_inf_score,
     }
 
-    return scores_results
+    return scores_results, pred_cluster_labels
 
 # def compute_entropy(p):
 #     entropy_p = np.multiply(p, np.log2(p))

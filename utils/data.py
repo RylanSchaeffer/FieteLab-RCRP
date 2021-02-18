@@ -74,7 +74,7 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
                                               replace=True,
                                               size=seq_len)
 
-    elif class_sampling == 'CRP':
+    elif class_sampling == 'DP':
         assert alpha is not None
         table_counts, assigned_table_seq = sample_sequence_from_crp(T=seq_len,
                                                                     alpha=alpha)

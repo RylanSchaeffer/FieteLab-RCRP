@@ -1,0 +1,34 @@
+import numpy as np
+import os
+import sklearn.datasets
+
+from utils.helpers import assert_no_nan_no_inf
+from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+from utils.metrics import score_predicted_clusters
+
+
+def main():
+    plot_dir = 'exp_03_udi_datasets/plots'
+    os.makedirs(plot_dir, exist_ok=True)
+    np.random.seed(1)
+
+    dataset_functions = {
+        'Iris': sklearn.datasets.load_iris,
+        'Diabetes': sklearn.datasets.load_diabetes,
+        'Wine': sklearn.datasets.load_wine,
+        'Breast Cancer': sklearn.datasets.load_breast_cancer,
+        'California Housing': sklearn.datasets.fetch_california_housing,
+    }
+
+    for dataset_str, dataset_function in dataset_functions.items():
+        dataset_plot_dir = os.path.join(plot_dir, dataset_str)
+        dataset = dataset_function(as_frame=True)
+        data, target = dataset.data, dataset.target
+        print(10)
+
+
+
+
+
+if __name__ == '__main__':
+    main()

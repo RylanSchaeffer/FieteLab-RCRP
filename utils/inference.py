@@ -1,10 +1,10 @@
 import numpy as np
-import pymc3 as pm
-from pymc3.math import logsumexp
+# import pymc3 as pm
+# from pymc3.math import logsumexp
 from scipy.spatial.distance import cdist
 from sklearn.mixture import BayesianGaussianMixture
-from theano import tensor as tt
-from theano.tensor.nlinalg import det
+# from theano import tensor as tt
+# from theano.tensor.nlinalg import det
 
 
 def bayesian_recursion(observations,
@@ -241,6 +241,7 @@ def nuts_sampling(observations,
                   gaussian_cov_scaling: int,
                   gaussian_mean_prior_cov_scaling: float,
                   burn_fraction: float = 0.25):
+
     assert alpha > 0
 
     num_obs, obs_dim = observations.shape
@@ -335,23 +336,18 @@ def nuts_sampling(observations,
 
 def variational_bayes(observations,
                       alpha: float,
-                      gaussian_mean_prior_cov_scaling: float,
-                      max_iter: int = 100,
-                      n_init: int = 5):
+                      max_iter: int = 8,  # same as DP-Means
+                      n_init: int = 1):
     assert alpha > 0
 
     num_obs, obs_dim = observations.shape
     var_dp_gmm = BayesianGaussianMixture(
         n_components=num_obs,
-        covariance_type='tied',
         max_iter=max_iter,
         n_init=n_init,
         init_params='random',
         weight_concentration_prior_type='dirichlet_process',
-        weight_concentration_prior=alpha,
-        mean_precision_prior=1. / gaussian_mean_prior_cov_scaling,
-        random_state=0,
-    )
+        weight_concentration_prior=alpha)
     var_dp_gmm.fit(observations)
     table_assignment_posteriors = var_dp_gmm.predict_proba(observations)
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
