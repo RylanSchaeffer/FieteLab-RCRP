@@ -31,11 +31,11 @@ def main():
                                           gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
                                           plot_dir=plot_dir)
 
-    # nuts_sampling_results = run_and_plot_nuts_sampling(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir,
-    #     gaussian_cov_scaling=gaussian_cov_scaling,
-    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
+    nuts_sampling_results = run_and_plot_nuts_sampling(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir,
+        gaussian_cov_scaling=gaussian_cov_scaling,
+        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
     bayesian_recursion_results = run_and_plot_bayesian_recursion(
         sampled_mog_results=sampled_mog_results,
@@ -240,13 +240,14 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
                                plot_dir,
                                gaussian_cov_scaling,
                                gaussian_mean_prior_cov_scaling):
-    nuts_sampling_plot_dir = os.path.join(plot_dir, 'gibbs_sampling')
+
+    nuts_sampling_plot_dir = os.path.join(plot_dir, 'nuts_sampling')
     os.makedirs(nuts_sampling_plot_dir, exist_ok=True)
     num_clusters_by_num_samples = {}
-
+    scores_by_num_samples = {}
     alpha = 1.5
-    possible_num_samples = np.arange(1000, 5001, 1000)
-    for num_samples in possible_num_samples:
+    possible_num_samples = np.arange(10000, 20001, 1000)
+    for num_samples in possible_num_samples[::-1]:
         nuts_sampling_results = nuts_sampling(
             observations=sampled_mog_results['gaussian_samples_seq'],
             num_samples=num_samples,
@@ -254,14 +255,19 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
             gaussian_cov_scaling=gaussian_cov_scaling,
             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
+        # score clusters
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
+        scores_by_num_samples[num_samples] = scores
+
         # count number of clusters
-        raise NotImplementedError
-        num_clusters_by_num_samples[num_samples] = 10
+        num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
 
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=nuts_sampling_results,
-            inference_alg='gibbs_sampling={}'.format(num_samples),
+            inference_alg='nuts_sampling={}'.format(num_samples),
             plot_dir=nuts_sampling_plot_dir)
 
     nuts_sampling_results = dict(

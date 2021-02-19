@@ -238,7 +238,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
                                plot_dir,
                                gaussian_cov_scaling,
                                gaussian_mean_prior_cov_scaling):
-    nuts_sampling_plot_dir = os.path.join(plot_dir, 'gibbs_sampling')
+    nuts_sampling_plot_dir = os.path.join(plot_dir, 'nuts_sampling')
     os.makedirs(nuts_sampling_plot_dir, exist_ok=True)
     num_clusters_by_num_samples = {}
 
@@ -259,7 +259,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=nuts_sampling_results,
-            inference_alg='gibbs_sampling={}'.format(num_samples),
+            inference_alg='nuts_sampling={}'.format(num_samples),
             plot_dir=nuts_sampling_plot_dir)
 
     nuts_sampling_results = dict(

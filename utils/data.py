@@ -50,7 +50,7 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
                                               class_sampling: str = 'Uniform',
                                               alpha: float = None,
                                               num_gaussians: int = None,
-                                              gaussian_params: dict = dict()):
+                                              gaussian_params: dict = {}):
     """
     Draw sample from mixture of Gaussians, using either uniform sampling or
     CRP sampling.
@@ -104,3 +104,4 @@ def sample_sequence_from_mixture_of_gaussians(seq_len: int = 100,
     )
 
     return result
+

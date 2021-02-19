@@ -1,10 +1,10 @@
 import numpy as np
-# import pymc3 as pm
-# from pymc3.math import logsumexp
+import pymc3 as pm
+from pymc3.math import logsumexp
 from scipy.spatial.distance import cdist
 from sklearn.mixture import BayesianGaussianMixture
-# from theano import tensor as tt
-# from theano.tensor.nlinalg import det
+from theano import tensor as tt
+from theano.tensor.nlinalg import det
 
 
 def bayesian_recursion(observations,
@@ -240,13 +240,19 @@ def nuts_sampling(observations,
                   alpha: float,
                   gaussian_cov_scaling: int,
                   gaussian_mean_prior_cov_scaling: float,
+                  variational_max_num_clusters=None,
                   burn_fraction: float = 0.25):
 
     assert alpha > 0
 
     num_obs, obs_dim = observations.shape
-    max_num_clusters = num_obs
-    table_assignments = np.zeros((max_num_clusters, max_num_clusters))
+
+    if variational_max_num_clusters is None:
+        # multiply by 2 for safety
+        variational_max_num_clusters = 2*int(alpha * np.log(1 + num_obs / alpha))
+
+    table_assignments = np.zeros((variational_max_num_clusters,
+                                  variational_max_num_clusters))
     table_assignments[0, 0] = 1
 
     # https://docs.pymc.io/notebooks/dp_mix.html
@@ -277,14 +283,14 @@ def nuts_sampling(observations,
 
     # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
     with pm.Model() as model:
-        pm_beta = pm.Beta("beta", 1.0, alpha, shape=max_num_clusters)
+        pm_beta = pm.Beta("beta", 1.0, alpha, shape=variational_max_num_clusters)
         pm_w = pm.Deterministic("w", stick_breaking(pm_beta))
         pm_cluster_means = [
             pm.MvNormal(f'cluster_mean_{cluster_idx}',
                         mu=pm.floatX(np.zeros(obs_dim)),
                         cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
                         shape=(obs_dim,))
-            for cluster_idx in range(max_num_clusters)]
+            for cluster_idx in range(variational_max_num_clusters)]
         pm_obs = pm.DensityDist('obs',
                                 logp_gmix(cluster_means=pm_cluster_means,
                                           cluster_weights=pm_w,
@@ -292,7 +298,7 @@ def nuts_sampling(observations,
                                 observed=observations)
 
         pm_trace = pm.sample(draws=num_samples,
-                             tune=500,
+                             tune=2500,
                              chains=4,
                              target_accept=0.9,
                              random_seed=1)
@@ -302,14 +308,14 @@ def nuts_sampling(observations,
     # figure out which point belongs to which cluster
     # shape (max_num_clusters, num_samples, obs_dim)
     cluster_means_samples = np.stack([pm_trace[f'cluster_mean_{cluster_idx}']
-                                      for cluster_idx in range(max_num_clusters)])
+                                      for cluster_idx in range(variational_max_num_clusters)])
 
     # burn the first samples
     cluster_means_samples = cluster_means_samples[:, int(burn_fraction * num_samples):, :]
     cluster_means = np.mean(cluster_means_samples, axis=1)
 
     distance_obs_to_cluster_means = cdist(observations, cluster_means)
-    table_assignment_posteriors = np.exp(-distance_obs_to_cluster_means / 2)
+    table_assignment_posteriors = np.exp(-np.square(distance_obs_to_cluster_means) / 2)
     table_assignment_posteriors *= np.power(2. * np.pi, -obs_dim / 2.)
 
     # normalize to get posterior distributions
@@ -326,12 +332,12 @@ def nuts_sampling(observations,
                                  repeats=num_obs,
                                  axis=0))
 
-    gibbs_sampling_results = dict(
+    nuts_sampling_results = dict(
         table_assignment_posteriors=table_assignment_posteriors,
         table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
         parameters=params)
 
-    return gibbs_sampling_results
+    return nuts_sampling_results
 
 
 def variational_bayes(observations,
