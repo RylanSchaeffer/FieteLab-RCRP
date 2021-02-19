@@ -181,7 +181,7 @@ table_distributions_by_T_array = np.stack([table_distributions_by_T[key]
 fig, axes = plt.subplots(nrows=1,
                          ncols=5,
                          figsize=(18, 4),
-                         gridspec_kw={"width_ratios": [1, 0.1, 1, 0.1, 1]},
+                         gridspec_kw={"width_ratios": [1, 0.2, 1, 0.2, 1]},
                          sharex=True)
 
 ax = axes[0]
