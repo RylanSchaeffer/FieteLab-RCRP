@@ -18,11 +18,12 @@ os.makedirs(plot_dir, exist_ok=True)
 
 T = 50  # max time
 num_samples = 5000  # number of samples to draw from CRP(alpha)
-alphas = [1.1, 10.01, 30.03]  # CRP parameter
+alphas = [1.1, 10.01, 15.51, 30.03]  # CRP parameter
 alphas_color_map = {
-    1.1: 'tab:blue',
-    10.01: 'tab:orange',
-    30.03: 'tab:green'
+    1.1:    'tab:blue',
+    10.01:  'tab:orange',
+    15.51:  'tab:purple',
+    30.03:  'tab:green'
 }
 crp_samples_by_alpha = {}
 for alpha in alphas:
@@ -63,46 +64,48 @@ for alpha in alphas:
 plt.legend()
 plt.xlabel(f'Number of Tables after T={T} customers (K_T)')
 plt.ylabel('P(K_T = k)')
-plt.show()
+# plot.show()()
 
 table_nums = 1 + np.arange(T)
-table_distributions_by_T = {}
-alpha = 30.03
+table_distributions_by_alpha_by_T = {}
 cmap = plt.get_cmap('jet_r')
-for t in table_nums:
-    result = np.zeros(shape=T)
-    for repeat_idx in np.arange(1, 1 + t):
-        result[repeat_idx - 1] = chinese_table_restaurant_distribution(
-            t=t,
-            k=repeat_idx,
-            alpha=alpha)
-    table_distributions_by_T[t] = result
-    # if t == 1 or t == T:
-    #     plt.plot(table_nums,
-    #              table_distributions_by_T[t],
-    #              label=f'T={t}',
-    #              color=cmap(float(t) / T))
-    # else:
-    plt.plot(table_nums,
-             table_distributions_by_T[t],
-             # label=f'T={t}',
-             color=cmap(float(t) / T))
-# https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
-norm = mpl.colors.Normalize(vmin=1, vmax=T)
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-# sm.set_array([])
-colorbar = plt.colorbar(sm,
-                        ticks=np.arange(1, T + 1, 5),
-                        # boundaries=np.arange(-0.05, T + 0.1, .1)
-                        )
-colorbar.set_label('Number of Customers')
-plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
-plt.xlabel(r'Number of Tables after T Customers')
-plt.ylabel(r'P(Number of Tables after T Customers)')
-plt.savefig(os.path.join(plot_dir, 'crt_table_distribution.png'),
-            bbox_inches='tight',
-            dpi=300)
-plt.show()
+for alpha in alphas:
+    table_distributions_by_alpha_by_T[alpha] = {}
+    for t in table_nums:
+        result = np.zeros(shape=T)
+        for repeat_idx in np.arange(1, 1 + t):
+            result[repeat_idx - 1] = chinese_table_restaurant_distribution(
+                t=t,
+                k=repeat_idx,
+                alpha=alpha)
+        table_distributions_by_alpha_by_T[alpha][t] = result
+        # if t == 1 or t == T:
+        #     plt.plot(table_nums,
+        #              table_distributions_by_T[t],
+        #              label=f'T={t}',
+        #              color=cmap(float(t) / T))
+        # else:
+        plt.plot(table_nums,
+                 table_distributions_by_alpha_by_T[alpha][t],
+                 # label=f'T={t}',
+                 color=cmap(float(t) / T))
+
+    # https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
+    norm = mpl.colors.Normalize(vmin=1, vmax=T)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    colorbar = plt.colorbar(sm,
+                            ticks=np.arange(1, T + 1, 5),
+                            # boundaries=np.arange(-0.05, T + 0.1, .1)
+                            )
+    colorbar.set_label('Number of Customers')
+    plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
+    plt.xlabel(r'Number of Tables after T Customers')
+    plt.ylabel(r'P(Number of Tables after T Customers)')
+    plt.savefig(os.path.join(plot_dir, 'crt_table_distribution.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plot.show()()
 
 
 def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
@@ -112,13 +115,23 @@ def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
     customer_seating_probs[1, 1] = 1.
     customer_seating_probs[2, 1] = 1. / (1. + alpha)
     customer_seating_probs[2, 2] = alpha / (1. + alpha)
+    # Approach 1: Recursive
+    # for customer_num in range(3, T + 1):
+    #     customer_seating_probs[customer_num, :] += customer_seating_probs[customer_num - 1, :]
+    #     for table_num in range(1, expected_num_tables + 1):
+    #         diff = chinese_table_restaurant_distribution(t=customer_num - 1, k=table_num - 1, alpha=alpha) - \
+    #                chinese_table_restaurant_distribution(t=customer_num - 2, k=table_num - 1, alpha=alpha)
+    #         scaled_diff = alpha * diff / (alpha + customer_num - 1)
+    #         customer_seating_probs[customer_num, table_num] += scaled_diff
+
+    # Approach 2: Iterative
     for customer_num in range(3, T + 1):
-        customer_seating_probs[customer_num, :] += customer_seating_probs[customer_num - 1, :]
+        customer_seating_probs[customer_num, :] = np.sum(customer_seating_probs[:customer_num, :],
+                                                         axis=0)
         for table_num in range(1, expected_num_tables + 1):
-            diff = chinese_table_restaurant_distribution(t=customer_num - 1, k=table_num - 1, alpha=alpha) - \
-                   chinese_table_restaurant_distribution(t=customer_num - 2, k=table_num - 1, alpha=alpha)
-            scaled_diff = alpha * diff / (alpha + customer_num - 1)
-            customer_seating_probs[customer_num, table_num] += scaled_diff
+            crt_k = chinese_table_restaurant_distribution(t=customer_num - 1, k=table_num - 1, alpha=alpha)
+            customer_seating_probs[customer_num, table_num] += alpha * crt_k
+        customer_seating_probs[customer_num, :] /= (alpha + customer_num - 1)
     analytical_table_occupancies = np.sum(customer_seating_probs, axis=0)
     return customer_seating_probs[1:, 1:], analytical_table_occupancies[1:]
 
@@ -142,7 +155,7 @@ for alpha in alphas:
     customer_seating_probs_by_alpha[alpha] = customer_seating_probs
 
 table_nums = 1 + np.arange(T)
-fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
+fig, axes = plt.subplots(nrows=1, ncols=len(alphas), figsize=(4*len(alphas), 4))
 for ax_idx, (alpha, crp_samples) in enumerate(crp_samples_by_alpha.items()):
     table_cutoff = alpha * np.log(1 + T / alpha)
     empiric_table_occupancies_mean_by_repeat = np.mean(crp_samples, axis=0)
@@ -173,55 +186,61 @@ for ax_idx, (alpha, crp_samples) in enumerate(crp_samples_by_alpha.items()):
 plt.savefig(os.path.join(plot_dir, f'crp_table_occupancies.png'),
             bbox_inches='tight',
             dpi=300)
-plt.show()
+# plt.show()
 
 
-table_distributions_by_T_array = np.stack([table_distributions_by_T[key]
-                                           for key in sorted(table_distributions_by_T.keys())])
-fig, axes = plt.subplots(nrows=1,
-                         ncols=5,
-                         figsize=(18, 4),
-                         gridspec_kw={"width_ratios": [1, 0.2, 1, 0.2, 1]},
-                         sharex=True)
+for alpha in alphas:
 
-ax = axes[0]
-sns.heatmap(
-    data=np.cumsum(customer_seating_probs_by_alpha[30.03], axis=0).T,
-    ax=ax,
-    cbar_kws=dict(label=r'$\sum_{t^{\prime} = 1}^{t-1} p(z_{t\prime} = k)$'),
-    cmap='jet')
-ax.invert_yaxis()
-ax.set_xlabel('Time Index')
-ax.set_ylabel('Table Index')
-ax.set_title('Running Sum of Prev. Tables\' Distributions')
+    fig, axes = plt.subplots(nrows=1,
+                             ncols=5,
+                             figsize=(18, 4),
+                             gridspec_kw={"width_ratios": [1, 0.2, 1, 0.2, 1]},
+                             sharex=True)
 
-axes[1].axis('off')
+    ax = axes[0]
+    cum_customer_seating_probs = np.cumsum(customer_seating_probs_by_alpha[alpha], axis=0)
+    sns.heatmap(
+        data=cum_customer_seating_probs.T,
+        ax=ax,
+        cbar_kws=dict(label=r'$\sum_{t^{\prime} = 1}^{t-1} p(z_{t\prime} = k)$'),
+        cmap='jet',
+        mask=cum_customer_seating_probs.T == 0)
+    ax.invert_yaxis()
+    ax.set_xlabel('Time Index')
+    ax.set_ylabel('Table Index')
+    ax.set_title('Running Sum of Prev. Tables\' Distributions')
 
-ax = axes[2]
-sns.heatmap(
-    data=table_distributions_by_T_array.T,
-    ax=ax,
-    cbar_kws=dict(label='$p(K_t = k)$'),
-    cmap='jet')
-ax.invert_yaxis()
-ax.set_title('Distribution over Number of Non-Empty Tables')
-ax.set_xlabel('Time Index')
+    axes[1].axis('off')
 
-axes[3].axis('off')
+    ax = axes[2]
+    table_distributions_by_T_array = np.stack([table_distributions_by_alpha_by_T[alpha][key]
+                                               for key in sorted(table_distributions_by_alpha_by_T[alpha].keys())])
+    sns.heatmap(
+        data=table_distributions_by_T_array.T,
+        ax=ax,
+        cbar_kws=dict(label='$p(K_t = k)$'),
+        cmap='jet',
+        mask=table_distributions_by_T_array.T == 0.)
+    ax.invert_yaxis()
+    ax.set_title('Distribution over Number of Non-Empty Tables')
+    ax.set_xlabel('Time Index')
 
-ax = axes[4]
-sns.heatmap(
-    data=customer_seating_probs_by_alpha[30.03].T,
-    ax=ax,
-    cbar_kws=dict(label='$p(z_t)$'),
-    cmap='jet')
-ax.invert_yaxis()
-ax.set_title('Distribution for New Table')
-ax.set_xlabel('Time Index')
-plt.savefig(os.path.join(plot_dir, 'crp_recursion_alpha=30.03.png'),
-            bbox_inches='tight',
-            dpi=300)
-plt.show()
+    axes[3].axis('off')
+
+    ax = axes[4]
+    sns.heatmap(
+        data=customer_seating_probs_by_alpha[alpha].T,
+        ax=ax,
+        cbar_kws=dict(label='$p(z_t)$'),
+        cmap='jet',
+        mask=customer_seating_probs_by_alpha[alpha].T == 0.)
+    ax.invert_yaxis()
+    ax.set_title('Distribution for New Table')
+    ax.set_xlabel('Time Index')
+    plt.savefig(os.path.join(plot_dir, f'crp_recursion_alpha={alpha}.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plot.show()()
 
 
 table_nums = 1 + np.arange(T)
@@ -275,7 +294,7 @@ for alpha, crp_samples in crp_samples_by_alpha.items():
     plt.savefig(os.path.join(plot_dir, f'crp_{alpha}_summary.png'),
                 bbox_inches='tight',
                 dpi=300)
-    plt.show()
+    # plot.show()()
 
 num_datasets, num_tables = 10, T
 possible_num_samples = np.logspace(1, 4, 4).astype(np.int)
@@ -333,4 +352,4 @@ ax.set_xlabel('Number of Samples (S)')
 plt.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
             bbox_inches='tight',
             dpi=300)
-plt.show()
+# plot.show()()

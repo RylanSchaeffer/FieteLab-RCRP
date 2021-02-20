@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import scipy as sp
+import scipy.special
 import scipy.stats
 import scipy.optimize
 
@@ -15,7 +16,6 @@ os.makedirs(plot_dir, exist_ok=True)
 
 
 def run_dp_expt(alpha):
-
     # alpha = 2
     beta = 0.8
     vocab_dim = 10  # vocabulary size
@@ -93,7 +93,6 @@ def run_dp_expt(alpha):
     inferred_topic_dirichlet_parameters = np.full(shape=(num_topics, vocab_dim),
                                                   fill_value=epsilon)  # need small value to ensure non-zero
 
-    # num_topics_idx = 0.
     for doc_idx, doc in enumerate(docs):
 
         # initialize possible new cluster with parameters matching doc word count
@@ -105,22 +104,48 @@ def run_dp_expt(alpha):
         # see https://en.wikipedia.org/wiki/Dirichlet_distribution#Conjugate_to_categorical/multinomial
         # however, again, we have floating point issues
         # add epsilon, and renormalize
-        multinomial_parameters = np.apply_along_axis(
-            func1d=np.random.dirichlet,
-            axis=1,
-            arr=inferred_topic_dirichlet_parameters[:doc_idx + 1, :])
-        multinomial_parameters += epsilon
-        multinomial_parameters = np.divide(multinomial_parameters,
-                                           np.sum(multinomial_parameters, axis=1)[:, np.newaxis])
+        # TODO: we want the likelihood for every topic p(d_t|nhat, z_t = k) = Dirichlet-Multinomial(nhat_k)
+        # nhat is the running pseudocounts for the Dirichlet distribution
 
-        # multinomial mean
+        # Approach 1: Multinomial-Dirichlet
+        words_in_doc = np.sum(doc)
+        log_numerator = np.log(words_in_doc) + np.log(scipy.special.beta(
+            np.sum(inferred_topic_dirichlet_parameters[:doc_idx + 1, :], axis=1),
+            words_in_doc))
+        # shape (doc idx, vocab size)
+        beta_terms = scipy.special.beta(
+            inferred_topic_dirichlet_parameters[:doc_idx + 1, :],
+            doc)
+        log_x_times_beta_terms = np.add(
+            np.log(beta_terms),
+            np.log(doc))
+        # beta numerically can create infs if x is 0, even though 0*Beta(., 0) should be 0
+        # consequently, filter these out by setting equal to 0
+        log_x_times_beta_terms[np.isnan(log_x_times_beta_terms)] = 0.
+        # shape (doc idx, )
+        log_denominator = np.sum(log_x_times_beta_terms, axis=1)
+        assert_no_nan_no_inf(log_denominator)
+        log_like = log_numerator - log_denominator
+        assert_no_nan_no_inf(log_like)
+        like = np.exp(log_like)
+
+        # Approach 2: Sampling
+        # multinomial_parameters = np.apply_along_axis(
+        #     func1d=np.random.dirichlet,
+        #     axis=1,
+        #     arr=inferred_topic_dirichlet_parameters[:doc_idx + 1, :])
+        # multinomial_parameters += epsilon
+        # multinomial_parameters = np.divide(multinomial_parameters,
+        #                                    np.sum(multinomial_parameters, axis=1)[:, np.newaxis])
+        # assert np.allclose(np.sum(multinomial_parameters, axis=1), 1)
+        # like1 = scipy.stats.multinomial.pmf(x=doc, n=np.sum(doc), p=multinomial_parameters)
+
+        # Approach 3: Dirichlet Mean
         # multinomial_parameters = np.divide(
         #     inferred_topic_dirichlet_parameters[:doc_idx+1, :],
         #     np.sum(inferred_topic_dirichlet_parameters[:doc_idx + 1, :], axis=1)[:, np.newaxis])
-
-        assert np.allclose(np.sum(multinomial_parameters, axis=1), 1)
-
-        like = scipy.stats.multinomial.pmf(x=doc, n=np.sum(doc), p=multinomial_parameters)
+        # assert np.allclose(np.sum(multinomial_parameters, axis=1), 1)
+        # like = scipy.stats.multinomial.pmf(x=doc, n=np.sum(doc), p=multinomial_parameters)
 
         assert_no_nan_no_inf(like)
         if doc_idx == 0:
@@ -188,7 +213,8 @@ def run_dp_expt(alpha):
         # update parameters based on Dirichlet prior and Multinomial likelihood
         # floating point errors are common here because such small values!
         probability_prefactor = np.divide(table_assignment_posterior,
-                                          table_assignment_posteriors_running_sum[doc_idx, :len(table_assignment_posterior)])
+                                          table_assignment_posteriors_running_sum[doc_idx,
+                                          :len(table_assignment_posterior)])
         probability_prefactor[np.isnan(probability_prefactor)] = 0.
         assert_no_nan_no_inf(probability_prefactor)
 
@@ -222,8 +248,8 @@ def run_dp_expt(alpha):
 
 def EM(alpha):
     beta = 0.8
-    V = 10  # vocabulary size
-    M = 200  # len of each document
+    V = 6  # vocabulary size
+    M = 50  # len of each document
     N_doc = 400  # num_doc
     T = N_doc
     # T = N_doc
@@ -275,9 +301,13 @@ def EM(alpha):
     for n in range(20):
         # num_docs x num_topics
         log_like = docs @ np.log(P).T
-
         like_norm = np.exp(log_like)
         soft_assign = like_norm / like_norm.sum(axis=1)[:, np.newaxis]  # normalized distribution
+
+        # import scipy.stats
+        # like_scipy = scipy.stats.multinomial.pmf(x=docs[0, :],
+        #                                          n=np.sum(docs[0, :]).astype(np.int),
+        #                                          p=P[0, :])
 
         counts_soft = soft_assign.T @ docs
         P = counts_soft + beta
@@ -289,7 +319,7 @@ def EM(alpha):
 
 alpha_vals = np.linspace(0.2, 50, 10)
 all_res = [run_dp_expt(alpha) for alpha in alpha_vals]
-all_res_EM = [EM(alpha) for alpha in alpha_vals]
+# all_res_EM = [EM(alpha) for alpha in alpha_vals]
 e1 = [r['Normalized Mutual Info Score'] for r in all_res]
 # e1_EM = [r['Normalized Mutual Info Score'] for r in all_res_EM]
 plt.plot(alpha_vals, e1, label='Bayesian Recursion')
