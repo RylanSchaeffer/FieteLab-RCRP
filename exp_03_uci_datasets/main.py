@@ -8,7 +8,7 @@ from utils.metrics import score_predicted_clusters
 
 
 def main():
-    plot_dir = 'exp_03_uci_datasets/plots'1
+    plot_dir = 'exp_03_uci_datasets/plots'
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
@@ -17,14 +17,14 @@ def main():
         'Diabetes': sklearn.datasets.load_diabetes,
         'Wine': sklearn.datasets.load_wine,
         'Breast Cancer': sklearn.datasets.load_breast_cancer,
-        'California Housing': sklearn.datasets.fetch_california_housing,
+#        'California Housing': sklearn.datasets.fetch_california_housing,
     }
 
-    for dataset_str, dataset_function in dataset_load_functions.items():
+    for dataset_str, dataset_load_function in dataset_load_functions.items():
         dataset_plot_dir = os.path.join(plot_dir, dataset_str)
         os.makedirs(dataset_plot_dir, exist_ok=True)
-        dataset = dataset_function(as_frame=True)
-        data, target = dataset.data, dataset.target
+        dataset = dataset_load_function(as_frame=True)
+        features, targets = dataset.data, dataset.target
 
         print(10)
 

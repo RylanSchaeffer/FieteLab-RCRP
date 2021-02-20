@@ -64,7 +64,8 @@ for alpha in alphas:
 plt.legend()
 plt.xlabel(f'Number of Tables after T={T} customers (K_T)')
 plt.ylabel('P(K_T = k)')
-# plot.show()()
+plt.show()
+plt.close()
 
 table_nums = 1 + np.arange(T)
 table_distributions_by_alpha_by_T = {}
@@ -102,10 +103,11 @@ for alpha in alphas:
     plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
     plt.xlabel(r'Number of Tables after T Customers')
     plt.ylabel(r'P(Number of Tables after T Customers)')
-    plt.savefig(os.path.join(plot_dir, 'crt_table_distribution.png'),
+    plt.savefig(os.path.join(plot_dir, f'crt_table_distribution_alpha={alpha}.png'),
                 bbox_inches='tight',
                 dpi=300)
-    # plot.show()()
+    plt.show()
+    plt.close()
 
 
 def construct_analytical_customer_probs_and_table_occupancies(T, alpha):
@@ -186,7 +188,8 @@ for ax_idx, (alpha, crp_samples) in enumerate(crp_samples_by_alpha.items()):
 plt.savefig(os.path.join(plot_dir, f'crp_table_occupancies.png'),
             bbox_inches='tight',
             dpi=300)
-# plt.show()
+plt.show()
+plt.close()
 
 
 for alpha in alphas:
@@ -240,7 +243,8 @@ for alpha in alphas:
     plt.savefig(os.path.join(plot_dir, f'crp_recursion_alpha={alpha}.png'),
                 bbox_inches='tight',
                 dpi=300)
-    # plot.show()()
+    plt.show()
+    plt.close()
 
 
 table_nums = 1 + np.arange(T)
@@ -294,7 +298,8 @@ for alpha, crp_samples in crp_samples_by_alpha.items():
     plt.savefig(os.path.join(plot_dir, f'crp_{alpha}_summary.png'),
                 bbox_inches='tight',
                 dpi=300)
-    # plot.show()()
+    plt.show()
+    plt.close()
 
 num_datasets, num_tables = 10, T
 possible_num_samples = np.logspace(1, 4, 4).astype(np.int)
@@ -352,4 +357,5 @@ ax.set_xlabel('Number of Samples (S)')
 plt.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
             bbox_inches='tight',
             dpi=300)
-# plot.show()()
+plt.show()
+plt.close()
