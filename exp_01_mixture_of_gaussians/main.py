@@ -2,10 +2,11 @@ import numpy as np
 import pandas as pd
 
 from exp_01_mixture_of_gaussians.plot import *
+from exp_01_mixture_of_gaussians.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.mog_inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 

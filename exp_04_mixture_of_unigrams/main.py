@@ -5,10 +5,10 @@ import scipy
 import scipy.special
 
 from exp_04_mixture_of_unigrams.plot import *
+from exp_04_mixture_of_unigrams.inference import bayesian_recursion, expectation_maximization
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
 from utils.helpers import assert_no_nan_no_inf
-from utils.mou_inference import bayesian_recursion
 from utils.metrics import score_predicted_clusters
 
 
@@ -20,8 +20,11 @@ def main():
     # sample data
     sampled_mou_results = sample_sequence_from_mixture_of_unigrams(
         seq_len=150,
-        unigram_params=dict(dp_concentration_param=5.7,
-                            prior_over_topic_parameters=0.3))
+        # num_topics=10,
+        # vocab_dim=35,
+        unigram_params=dict(dp_concentration_param=5.7,  # alpha
+                            prior_over_topic_parameters=0.3,  # beta
+                            ))
 
     # plot data
     plot_sample_from_mixture_of_unigrams(assigned_table_seq_one_hot=sampled_mou_results['assigned_table_seq_one_hot'],
@@ -35,11 +38,21 @@ def main():
 
     inference_algs_results = {
         'Bayesian Recursion': bayesian_recursion_results,
-        # 'NUTS Sampling': nuts_sampling_results,
-        # 'DP-Means (Online)': dp_means_online_results,
-        # 'DP-Means (Offline)': dp_means_offline_results,
-        # 'Variational Bayes': variational_bayes_results,
     }
+    for num_iter in [15, 5, 1]:
+        inference_algs_results[f'Expectation Maximization (Num Iter={num_iter})'] = \
+            run_and_plot_expectation_maximization(
+                sampled_mou_results=sampled_mou_results,
+                plot_dir=plot_dir,
+                num_iter=num_iter)
+
+    # inference_algs_results = {
+    #     # 'Expectation Maximization': expectation_maximization_results,
+    #     # 'NUTS Sampling': nuts_sampling_results,
+    #     # 'DP-Means (Online)': dp_means_online_results,
+    #     # 'DP-Means (Offline)': dp_means_offline_results,
+    #     # 'Variational Bayes': variational_bayes_results,
+    # }
 
     plot_inference_algs_comparison(
         inference_algs_results=inference_algs_results,
@@ -49,7 +62,6 @@ def main():
 
 def run_and_plot_bayesian_recursion(sampled_mou_results,
                                     plot_dir):
-
     def likelihood_fn(doc, parameters):
         # create new mean for new table, centered at that point
         # initialize possible new cluster with parameters matching doc word count
@@ -58,7 +70,7 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         # create new mean for new table, centered at that point
         parameters['topics_concentrations'] = np.vstack([
             parameters['topics_concentrations'],
-            doc[np.newaxis, :] + parameters['epsilon']])
+            doc[np.newaxis, :] + parameters['beta']])
 
         # draw multinomial parameters
         # see https://en.wikipedia.org/wiki/Dirichlet_distribution#Conjugate_to_categorical/multinomial
@@ -67,7 +79,7 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         # TODO: we want the likelihood for every topic p(d_t|nhat, z_t = k) = Dirichlet-Multinomial(nhat_k)
         # nhat is the running pseudocounts for the Dirichlet distribution
 
-        # Approach 1: Multinomial-Dirichlet
+        # Approach 1: Dirichlet-Multinomial
         words_in_doc = np.sum(doc)
         log_numerator = np.log(words_in_doc) + np.log(scipy.special.beta(
             np.sum(parameters['topics_concentrations'], axis=1),
@@ -89,7 +101,15 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         assert_no_nan_no_inf(log_like)
         likelihoods = np.exp(log_like)
 
-        # Approach 2: Sampling
+        # check correctness of calculation
+        # import tensorflow as tf
+        # import tensorflow_probability as tfp
+        #
+        # dist = tfp.distributions.DirichletMultinomial(total_count=np.sum(doc),
+        #                                               concentration=parameters['topics_concentrations'])
+        # dist.prob(doc)
+
+        # Approach 2: Sampling # sample size 1
         # multinomial_parameters = np.apply_along_axis(
         #     func1d=np.random.dirichlet,
         #     axis=1,
@@ -118,15 +138,17 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
 
         # update parameters based on Dirichlet prior and Multinomial likelihood
         # floating point errors are common here because such small values!
-        probability_prefactor = np.divide(table_assignment_posterior,
-                                          table_assignment_posteriors_running_sum)
+        # probability_prefactor = np.divide(table_assignment_posterior,
+        #                                   table_assignment_posteriors_running_sum)
+        probability_prefactor = np.copy(table_assignment_posterior)
         probability_prefactor[np.isnan(probability_prefactor)] = 0.
         assert_no_nan_no_inf(probability_prefactor)
 
         inferred_topic_parameters_updates = np.multiply(
             probability_prefactor[:, np.newaxis],
             doc)
-        # multiply the last parameter update by 0 so we don't create a point and double count that obs
+        # multiply the last parameter update by 0 so we don't create a point and immediate
+        # add that obs to the pseudocounts again
         inferred_topic_parameters_updates[-1, :] *= 0.
         assert_no_nan_no_inf(inferred_topic_parameters_updates)
         parameters['topics_concentrations'] += inferred_topic_parameters_updates
@@ -169,6 +191,45 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
     )
 
     return bayesian_recursion_results
+
+
+def run_and_plot_expectation_maximization(sampled_mou_results: dict,
+                                          plot_dir: str,
+                                          num_iter: int):
+    alphas = 0.01 + np.arange(0., 10.01, 0.5)
+    expectation_maximization_plot_dir = os.path.join(plot_dir, 'expectation_maximization')
+    os.makedirs(expectation_maximization_plot_dir, exist_ok=True)
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    for alpha in alphas:
+        expectation_maximization_results = expectation_maximization(
+            docs=sampled_mou_results['doc_samples_seq'],
+            alpha=alpha,
+            num_iter=num_iter)
+
+        # record scores
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mou_results['assigned_table_seq'],
+            table_assignment_posteriors=expectation_maximization_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
+        # count number of clusters
+        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
+
+        # plot_inference_results(
+        #     sampled_mou_results=sampled_mou_results,
+        #     inference_results=bayesian_recursion_results,
+        #     inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
+        #     plot_dir=bayesian_recursion_plot_dir)
+
+        print('Finished Expectation Maximization alpha={:.2f}'.format(alpha))
+
+    expectation_maximization_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T,
+    )
+
+    return expectation_maximization_results
 
 
 if __name__ == '__main__':

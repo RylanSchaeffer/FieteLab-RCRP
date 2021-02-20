@@ -38,7 +38,7 @@ def plot_inference_algs_num_clusters_by_param(inference_algs_results,
     plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
                 bbox_inches='tight',
                 dpi=300)
-    # plt.show()
+    plt.show()
     plt.close()
 
 
@@ -62,7 +62,7 @@ def plot_inference_algs_scores_by_param(inference_algs_results: dict,
         plt.savefig(os.path.join(plot_dir, f'comparison_score={score_str}.png'),
                     bbox_inches='tight',
                     dpi=300)
-        # plt.show()
+        plt.show()
         plt.close()
 
 

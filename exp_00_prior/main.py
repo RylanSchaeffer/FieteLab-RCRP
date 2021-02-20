@@ -196,8 +196,8 @@ for alpha in alphas:
 
     fig, axes = plt.subplots(nrows=1,
                              ncols=5,
-                             figsize=(18, 4),
-                             gridspec_kw={"width_ratios": [1, 0.2, 1, 0.2, 1]},
+                             figsize=(13, 4),
+                             gridspec_kw={"width_ratios": [1, 0.1, 1, 0.1, 1]},
                              sharex=True)
 
     ax = axes[0]
@@ -211,7 +211,7 @@ for alpha in alphas:
     ax.invert_yaxis()
     ax.set_xlabel('Time Index')
     ax.set_ylabel('Table Index')
-    ax.set_title('Running Sum of Prev. Tables\' Distributions')
+    ax.set_title('Running Sum of\nPrev. Tables\' Distributions')
 
     axes[1].axis('off')
 
@@ -225,7 +225,7 @@ for alpha in alphas:
         cmap='jet',
         mask=table_distributions_by_T_array.T == 0.)
     ax.invert_yaxis()
-    ax.set_title('Distribution over Number of Non-Empty Tables')
+    ax.set_title('Distribution over\nNumber of Non-Empty Tables')
     ax.set_xlabel('Time Index')
 
     axes[3].axis('off')
@@ -238,7 +238,7 @@ for alpha in alphas:
         cmap='jet',
         mask=customer_seating_probs_by_alpha[alpha].T == 0.)
     ax.invert_yaxis()
-    ax.set_title('Distribution for New Table')
+    ax.set_title('New Table Distribution')
     ax.set_xlabel('Time Index')
     plt.savefig(os.path.join(plot_dir, f'crp_recursion_alpha={alpha}.png'),
                 bbox_inches='tight',
