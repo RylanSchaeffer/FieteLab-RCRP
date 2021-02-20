@@ -7,7 +7,7 @@ def bayesian_recursion(docs,
                        alpha: float,
                        likelihood_fn,
                        update_parameters_fn,
-                       beta: float = 0.8):
+                       beta: float = 10.):
     assert alpha > 0
     assert beta > 0
     num_docs, vocab_dim = docs.shape
@@ -22,17 +22,7 @@ def bayesian_recursion(docs,
         topics_concentrations=np.empty(shape=(0, vocab_dim)),  # need small value to ensure non-zero
         beta=beta)
 
-    import matplotlib.pyplot as plt
-
-    # plt.imshow(docs[:10, :])
-    # plt.show()
-
     likelihoods_bookeeping = np.zeros(shape=(num_docs, num_docs))
-
-    for doc_idx in range(1, 8):
-        docs[doc_idx, :] = docs[0, :]
-        docs[doc_idx, 0] -= 1
-        docs[doc_idx, doc_idx] += 1
 
     for doc_idx, doc in enumerate(docs):
         likelihoods, parameters = likelihood_fn(doc=doc, parameters=parameters)

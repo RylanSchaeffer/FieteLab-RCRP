@@ -177,11 +177,11 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         # count number of clusters
         num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
 
-        # plot_inference_results(
-        #     sampled_mou_results=sampled_mou_results,
-        #     inference_results=bayesian_recursion_results,
-        #     inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
-        #     plot_dir=bayesian_recursion_plot_dir)
+        plot_inference_results(
+            sampled_mou_results=sampled_mou_results,
+            inference_results=bayesian_recursion_results,
+            inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
+            plot_dir=bayesian_recursion_plot_dir)
 
         print('Finished Bayesian recursion alpha={:.2f}'.format(alpha))
 
