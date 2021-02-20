@@ -4,19 +4,6 @@ import os
 import seaborn as sns
 
 
-def plot_sample_from_mixture_of_gaussians(assigned_table_seq,
-                                          gaussian_samples_seq,
-                                          plot_dir):
-    plt.scatter(x=gaussian_samples_seq[:, 0],
-                y=gaussian_samples_seq[:, 1],
-                c=assigned_table_seq)
-    plt.savefig(os.path.join(plot_dir, 'sample_from_mixture_of_gaussians.png'),
-                bbox_inches='tight',
-                dpi=300)
-    # plt.show()
-    plt.close()
-
-
 def plot_inference_results(sampled_mog_results: dict,
                            inference_results: dict,
                            inference_alg: str,
@@ -129,21 +116,42 @@ def plot_inference_algs_comparison(inference_algs_results: dict,
                                    plot_dir: str):
     num_clusters = len(np.unique(sampled_mog_results['assigned_table_seq']))
 
-    plot_num_clusters_by_param(
+    plot_inference_algs_num_clusters_by_param(
         inference_algs_results=inference_algs_results,
         plot_dir=plot_dir,
         num_clusters=num_clusters)
 
     plot_inference_algs_scores_by_param(
         inference_algs_results=inference_algs_results,
-        sampled_mog_results=sampled_mog_results,
         plot_dir=plot_dir)
 
     print(10)
 
 
+def plot_inference_algs_num_clusters_by_param(inference_algs_results: dict,
+                                              plot_dir: str,
+                                              num_clusters: int):
+
+    for inference_alg, inference_alg_results in inference_algs_results.items():
+        plt.plot(list(inference_alg_results['num_clusters_by_param'].keys()),
+                 list(inference_alg_results['num_clusters_by_param'].values()),
+                 label=inference_alg)
+
+    plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
+    plt.ylabel('Number of Clusters')
+    plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
+    plt.gca().set_ylim(bottom=0)
+    plt.gca().set_xlim(left=0)
+    plt.legend()
+
+    plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+
 def plot_inference_algs_scores_by_param(inference_algs_results: dict,
-                                        sampled_mog_results: dict,
                                         plot_dir: str):
 
     score_strs = inference_algs_results[list(inference_algs_results.keys())[0]][
@@ -158,6 +166,8 @@ def plot_inference_algs_scores_by_param(inference_algs_results: dict,
         plt.legend()
         plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
         plt.ylabel(score_str)
+        plt.ylim(0., 1.)
+        plt.gca().set_xlim(left=0)
         plt.savefig(os.path.join(plot_dir, f'comparison_score={score_str}.png'),
                     bbox_inches='tight',
                     dpi=300)
@@ -165,21 +175,13 @@ def plot_inference_algs_scores_by_param(inference_algs_results: dict,
         plt.close()
 
 
-def plot_num_clusters_by_param(inference_algs_results: dict,
-                               plot_dir: str,
-                               num_clusters: int):
-
-    for inference_alg, inference_alg_results in inference_algs_results.items():
-        plt.plot(list(inference_alg_results['num_clusters_by_param'].keys()),
-                 list(inference_alg_results['num_clusters_by_param'].values()),
-                 label=inference_alg)
-
-    plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
-    plt.ylabel('Number of Clusters')
-    plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
-    plt.legend()
-
-    plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
+def plot_sample_from_mixture_of_gaussians(assigned_table_seq,
+                                          gaussian_samples_seq,
+                                          plot_dir):
+    plt.scatter(x=gaussian_samples_seq[:, 0],
+                y=gaussian_samples_seq[:, 1],
+                c=assigned_table_seq)
+    plt.savefig(os.path.join(plot_dir, 'sample_from_mixture_of_gaussians.png'),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()

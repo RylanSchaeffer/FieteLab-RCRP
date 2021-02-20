@@ -347,7 +347,8 @@ for alpha_idx, alpha in enumerate(alphas):
     ax.errorbar(x=possible_num_samples,
                 y=mse_empiric_vs_analytical_mean[:, alpha_idx],
                 yerr=mse_empiric_vs_analytical_sem[:, alpha_idx],
-                label=rf'$\alpha$={alpha}')
+                label=rf'$\alpha$={alpha}',
+                c=alphas_color_map[alpha])
 ax.legend()
 ax.set_xscale('log')
 ax.set_yscale('log')

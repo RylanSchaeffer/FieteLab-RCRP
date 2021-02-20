@@ -82,8 +82,7 @@ def bayesian_recursion(observations,
         parameters = update_parameters_fn(
             observation=observation,
             table_assignment_posterior=table_assignment_posterior,
-            table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum[
-                                                    obs_idx, :len(table_assignment_posterior)],
+            table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum[obs_idx, :len(table_assignment_posterior)],
             parameters=parameters)
 
     bayesian_recursion_results = dict(

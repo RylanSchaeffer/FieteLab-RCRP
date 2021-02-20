@@ -157,16 +157,16 @@ def sample_sequence_from_mixture_of_unigrams(seq_len: int = 450,
 
     # create sequence of Multinomial samples from (num_topics, vocab_dim)
     # draw a Sample of num_docs documents each of size doc_len
-    assigned_table_seq = np.random.multinomial(
+    assigned_table_seq_one_hot = np.random.multinomial(
         n=1,
         pvals=mixture_of_unigrams['stick_weights'],
         size=seq_len)
     # convert assigned table sequence to one-hot codes
-    assigned_table_seq_one_hot = np.argmax(assigned_table_seq, axis=1)
+    assigned_table_seq = np.argmax(assigned_table_seq_one_hot, axis=1)
 
     doc_samples_seq = np.zeros(shape=(seq_len, vocab_dim))
     for doc_idx in range(seq_len):
-        topic_idx = assigned_table_seq_one_hot[doc_idx]
+        topic_idx = assigned_table_seq[doc_idx]
         doc = np.random.multinomial(n=doc_len,
                                     pvals=mixture_of_unigrams['topics_parameters'][topic_idx, :],
                                     size=1)
