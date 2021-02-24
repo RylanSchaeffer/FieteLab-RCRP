@@ -82,7 +82,7 @@ def plot_inference_results(sampled_mou_results: dict,
 
     ax_idx = 0
     ax = axes[ax_idx]
-    sns.heatmap(data=inference_results['table_assignment_posteriors'][:, :num_tables_to_plot],
+    sns.heatmap(data=sampled_mou_results['assigned_table_seq_one_hot'],
                 ax=ax,
                 cmap='Blues')
     ax.set_title('True Topics')
