@@ -1,4 +1,4 @@
-# Online Inference in Chinese Restaurant Process Latent Variable Time Series
+# Efficient Online Inference for Nonparametric Latent Variable Time Series
 
 ![](exp_00_prior/plots/crt_table_distribution.png)
 
