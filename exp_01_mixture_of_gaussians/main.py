@@ -2,11 +2,11 @@ import numpy as np
 import pandas as pd
 
 from exp_01_mixture_of_gaussians.plot import *
-from exp_01_mixture_of_gaussians.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
 
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
+from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, sampling_nuts, sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 
@@ -32,11 +32,11 @@ def main():
                                           gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
                                           plot_dir=plot_dir)
 
-    # nuts_sampling_results = run_and_plot_nuts_sampling(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir,
-    #     gaussian_cov_scaling=gaussian_cov_scaling,
-    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
+    nuts_sampling_results = run_and_plot_nuts_sampling(
+        sampled_mog_results=sampled_mog_results,
+        plot_dir=plot_dir,
+        gaussian_cov_scaling=gaussian_cov_scaling,
+        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
     bayesian_recursion_results = run_and_plot_bayesian_recursion(
         sampled_mog_results=sampled_mog_results,
@@ -247,9 +247,9 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
     num_clusters_by_num_samples = {}
     scores_by_num_samples = {}
     alpha = 1.5
-    possible_num_samples = np.arange(10000, 20001, 1000)
-    for num_samples in possible_num_samples[::-1]:
-        nuts_sampling_results = nuts_sampling(
+    possible_num_samples = np.arange(10, 21, 1)
+    for num_samples in possible_num_samples:
+        nuts_sampling_results = sampling_hmc_gibbs(
             observations=sampled_mog_results['gaussian_samples_seq'],
             num_samples=num_samples,
             alpha=alpha,

@@ -4,12 +4,23 @@
 
 ## Setup
 
-After cloning the repository, install the requirements. The requirements are quite basic
-(numpy, matplotlib), so you may be able to skip this step.
+After cloning the repository, create a virtual environment for Python 3:
+
+`python3 -m venv rcrp`
+
+Then activate the virtual environment:
+
+`source rcrp/bin/activate`
+
+Ensure pip is up to date:
+
+`pip install --upgrade pip`
+
+Then install the required packages:
 
 `pip install -r requirements.txt`
 
-We used Python3 and did not test Python2, but Python2 may work.
+We did not test Python2, but Python2 may work.
 
 ## Running
 

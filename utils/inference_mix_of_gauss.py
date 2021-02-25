@@ -1,10 +1,18 @@
 import numpy as np
 import pymc3 as pm
 from pymc3.math import logsumexp
+import pyro
+import pyro.distributions
+import pyro.infer
 from scipy.spatial.distance import cdist
 from sklearn.mixture import BayesianGaussianMixture
 from theano import tensor as tt
 from theano.tensor.nlinalg import det
+import torch
+import torch.nn.functional as F
+
+torch.set_default_tensor_type('torch.DoubleTensor')
+# torch.set_default_tensor_type('torch.FloatTensor')
 
 
 def bayesian_recursion(observations,
@@ -234,7 +242,71 @@ def dp_means_offline(observations,
     return dp_means_offline_results
 
 
-def nuts_sampling(observations,
+def sampling_hmc_gibbs(observations,
+                       num_samples: int,
+                       alpha: float,
+                       gaussian_cov_scaling: int,
+                       gaussian_mean_prior_cov_scaling: float,
+                       sampling_max_num_clusters=None,
+                       burn_fraction: float = 0.25):
+
+    from jax import random
+    import jax.numpy as jnp
+    import numpyro
+    import numpyro.distributions as dist
+    from numpyro.infer import MCMC, NUTS, HMCGibbs
+
+    num_obs, obs_dim = observations.shape
+
+    def model():
+        x = numpyro.sample("x", dist.Normal(0.0, 2.0))
+        y = numpyro.sample("y", dist.Normal(0.0, 2.0))
+        numpyro.sample("obs", dist.Normal(x + y, 1.0), obs=jnp.array([1.0]))
+
+    def gibbs_fn(rng_key, gibbs_sites, hmc_sites):
+        y = hmc_sites['y']
+        new_x = dist.Normal(0.8 * (1 - y), jnp.sqrt(0.8)).sample(rng_key)
+        return {'x': new_x}
+
+    hmc_kernel = NUTS(model)
+    kernel = HMCGibbs(hmc_kernel, gibbs_fn=gibbs_fn, gibbs_sites=['x'])
+    mcmc = MCMC(kernel, 100, 100, progress_bar=False)
+    mcmc.run(random.PRNGKey(0))
+    mcmc.print_summary()
+
+    # def mix_weights(beta):
+    #     beta1m_cumprod = (1 - beta).cumprod(-1)
+    #     return F.pad(beta, (0, 1), value=1) * F.pad(beta1m_cumprod, (1, 0), value=1)
+    #
+    # def gibbs_fn():
+    #     pass
+    #
+    # def model(obs):
+    #     with pyro.plate('beta_plate', sampling_max_num_clusters - 1):
+    #         beta = pyro.sample(
+    #             'beta',
+    #             pyro.distributions.Beta(1, torch_alpha))
+    #
+    #     with pyro.plate('mean_plate', sampling_max_num_clusters):
+    #         mean = pyro.sample(
+    #             'mean',
+    #             pyro.distributions.MultivariateNormal(
+    #                 torch.zeros(obs_dim),
+    #                 torch_gaussian_mean_prior_cov_scaling * torch.eye(obs_dim)))
+    #
+    #     with pyro.plate('data', num_obs):
+    #         z = pyro.sample(
+    #             'z',
+    #             pyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+    #         pyro.sample(
+    #             'obs',
+    #             pyro.distributions.MultivariateNormal(
+    #                 mean[z],
+    #                 torch_gaussian_cov_scaling * torch.eye(obs_dim)),
+    #             obs=obs)
+
+
+def sampling_nuts(observations,
                   num_samples: int,
                   alpha: float,
                   gaussian_cov_scaling: int,
@@ -337,6 +409,76 @@ def nuts_sampling(observations,
         parameters=params)
 
     return nuts_sampling_results
+
+
+def sampling_nuts_pyro(observations,
+                       num_samples: int,
+                       alpha: float,
+                       gaussian_cov_scaling: int,
+                       gaussian_mean_prior_cov_scaling: float,
+                       sampling_max_num_clusters=None,
+                       burn_fraction: float = 0.25):
+
+    pyro.enable_validation(True)
+    pyro.set_rng_seed(0)
+
+    num_obs, obs_dim = observations.shape
+    torch_observations = torch.from_numpy(observations)
+    torch_alpha = torch.from_numpy(np.array(alpha))
+    torch_gaussian_cov_scaling = torch.from_numpy(
+        np.array(gaussian_cov_scaling))
+    torch_gaussian_mean_prior_cov_scaling = torch.from_numpy(
+        np.array(gaussian_mean_prior_cov_scaling))
+
+    if sampling_max_num_clusters is None:
+        # multiply by 2 for safety
+        sampling_max_num_clusters = 2 * int(alpha * np.log(1 + num_obs / alpha))
+
+    def mix_weights(beta):
+        beta1m_cumprod = (1 - beta).cumprod(-1)
+        return F.pad(beta, (0, 1), value=1) * F.pad(beta1m_cumprod, (1, 0), value=1)
+
+    def model(obs):
+        with pyro.plate('beta_plate', sampling_max_num_clusters - 1):
+            beta = pyro.sample(
+                'beta',
+                pyro.distributions.Beta(1, torch_alpha))
+
+        with pyro.plate('mean_plate', sampling_max_num_clusters):
+            mean = pyro.sample(
+                'mean',
+                pyro.distributions.MultivariateNormal(
+                    torch.zeros(obs_dim),
+                    torch_gaussian_mean_prior_cov_scaling * torch.eye(obs_dim)))
+
+        with pyro.plate('data', num_obs):
+            z = pyro.sample(
+                'z',
+                pyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+            pyro.sample(
+                'obs',
+                pyro.distributions.MultivariateNormal(
+                    mean[z],
+                    torch_gaussian_cov_scaling * torch.eye(obs_dim)),
+                obs=obs)
+
+    # serving_model = pyro.infer.infer_discrete(model, first_available_dim=-1)
+    nuts_kernel = pyro.infer.NUTS(model=model, adapt_step_size=True)
+    mcmc = pyro.infer.MCMC(
+        kernel=nuts_kernel,
+        num_samples=num_samples,
+        warmup_steps=3)
+    mcmc.run(torch_observations)
+    samples = mcmc.get_samples()
+
+    import matplotlib.pyplot as plt
+    for cluster_idx in range(sampling_max_num_clusters):
+        plt.scatter(samples['mean'][-1, cluster_idx, 0],
+                 samples['mean'][-1, cluster_idx, 1],
+                 label=cluster_idx)
+    plt.legend()
+    plt.show()
+    print(10)
 
 
 def variational_bayes(observations,

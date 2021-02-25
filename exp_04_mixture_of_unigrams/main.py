@@ -5,10 +5,10 @@ import scipy
 import scipy.special
 
 from exp_04_mixture_of_unigrams.plot import *
-from exp_04_mixture_of_unigrams.inference import bayesian_recursion, expectation_maximization
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
 from utils.helpers import assert_no_nan_no_inf
+from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization
 from utils.metrics import score_predicted_clusters
 
 

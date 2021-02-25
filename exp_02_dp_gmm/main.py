@@ -5,7 +5,7 @@ from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+from utils.mix_of_gauss_inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 

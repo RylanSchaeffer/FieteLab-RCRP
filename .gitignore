@@ -1,6 +1,7 @@
 .idea/
 offline_clustering/data
 offline_clustering/envs
+rcrp
 *.npy
 *.pkl
 **/__pycache__/
