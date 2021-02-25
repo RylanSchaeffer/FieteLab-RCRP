@@ -1,6 +1,11 @@
+from jax import random
+import jax.numpy as jnp
 import numpy as np
-import pymc3 as pm
-from pymc3.math import logsumexp
+import numpyro
+import numpyro.infer
+import numpyro.distributions
+# import pymc3 as pm
+# from pymc3.math import logsumexp
 import pyro
 import pyro.distributions
 import pyro.infer
@@ -242,6 +247,7 @@ def dp_means_offline(observations,
     return dp_means_offline_results
 
 
+# why sampling is so hard: https://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
 def sampling_hmc_gibbs(observations,
                        num_samples: int,
                        alpha: float,
@@ -250,29 +256,84 @@ def sampling_hmc_gibbs(observations,
                        sampling_max_num_clusters=None,
                        burn_fraction: float = 0.25):
 
-    from jax import random
-    import jax.numpy as jnp
-    import numpyro
-    import numpyro.distributions as dist
-    from numpyro.infer import MCMC, NUTS, HMCGibbs
-
     num_obs, obs_dim = observations.shape
+    # torch_observations = torch.from_numpy(observations)
+    # torch_alpha = torch.from_numpy(np.array(alpha))
+    # torch_gaussian_cov_scaling = torch.from_numpy(
+    #     np.array(gaussian_cov_scaling))
+    # torch_gaussian_mean_prior_cov_scaling = torch.from_numpy(
+    #     np.array(gaussian_mean_prior_cov_scaling))
 
-    def model():
-        x = numpyro.sample("x", dist.Normal(0.0, 2.0))
-        y = numpyro.sample("y", dist.Normal(0.0, 2.0))
-        numpyro.sample("obs", dist.Normal(x + y, 1.0), obs=jnp.array([1.0]))
+    # http://num.pyro.ai/en/latest/mcmc.html#numpyro.infer.hmc_gibbs.DiscreteHMCGibbs
+
+    def model(probs, locs):
+        c = numpyro.sample("c", numpyro.distributions.Categorical(probs))
+        numpyro.sample("x", numpyro.distributions.Normal(locs[c], 0.5))
+
+    probs = jnp.array([0.15, 0.3, 0.3, 0.25])
+    locs = jnp.array([-2, 0, 2, 4])
+    kernel = numpyro.infer.DiscreteHMCGibbs(numpyro.infer.NUTS(model))
+    mcmc = numpyro.infer.MCMC(kernel, num_warmup=10, num_samples=11, progress_bar=True)
+    mcmc.run(random.PRNGKey(0), probs, locs)
+    mcmc.print_summary()
+    samples = mcmc.get_samples() #["x"]
+    assert abs(jnp.mean(samples['x']) - 1.3) < 0.1
+    assert abs(jnp.var(samples['x']) - 4.36) < 0.5
+
+
+    if sampling_max_num_clusters is None:
+        # multiply by 2 for safety
+        sampling_max_num_clusters = 2 * int(alpha * np.log(1 + num_obs / alpha))
+
+    def mix_weights(beta):
+        beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
+        term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
+        term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
+        return jnp.multiply(term1, term2)
+
+    def model(obs):
+        with numpyro.plate('beta_plate', sampling_max_num_clusters - 1):
+            beta = numpyro.sample(
+                'beta',
+                numpyro.distributions.Beta(1, alpha))
+
+        with pyro.plate('mean_plate', sampling_max_num_clusters):
+            mean = numpyro.sample(
+                'mean',
+                numpyro.distributions.MultivariateNormal(
+                    jnp.zeros(obs_dim),
+                    gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
+
+        with pyro.plate('data', num_obs):
+            z = numpyro.sample(
+                'z',
+                numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+            numpyro.sample(
+                'obs',
+                numpyro.distributions.MultivariateNormal(
+                    mean[z],
+                    gaussian_cov_scaling * jnp.eye(obs_dim)),
+                obs=obs)
+
+    # def model():
+    #     x = numpyro.sample("x", numpyro.distributions.Normal(0.0, 2.0))
+    #     z = numpyro.sample("z", numpyro.distributions.Normal(0.0, 2.0))
+    #     numpyro.sample("obs", numpyro.distributions.Normal(x + z, 1.0), obs=jnp.array([1.0]))
 
     def gibbs_fn(rng_key, gibbs_sites, hmc_sites):
-        y = hmc_sites['y']
-        new_x = dist.Normal(0.8 * (1 - y), jnp.sqrt(0.8)).sample(rng_key)
+        z = hmc_sites['z']
+        new_x = numpyro.distributions.Normal(0.8 * (1 - z), jnp.sqrt(0.8)).sample(rng_key)
         return {'x': new_x}
 
-    hmc_kernel = NUTS(model)
-    kernel = HMCGibbs(hmc_kernel, gibbs_fn=gibbs_fn, gibbs_sites=['x'])
-    mcmc = MCMC(kernel, 100, 100, progress_bar=False)
-    mcmc.run(random.PRNGKey(0))
+    hmc_kernel = numpyro.infer.NUTS(model)
+    # kernel = numpyro.infer.HMCGibbs(hmc_kernel, gibbs_fn=gibbs_fn, gibbs_sites=['z'])
+    kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
+    mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=89, progress_bar=True)
+    mcmc.run(random.PRNGKey(0), obs=observations)
     mcmc.print_summary()
+    samples = mcmc.get_samples() #["z"]
+    print(10)
+
 
     # def mix_weights(beta):
     #     beta1m_cumprod = (1 - beta).cumprod(-1)
@@ -352,7 +413,7 @@ def sampling_nuts(observations,
 
         return logp_
 
-    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
+    # https://docs.pymc.io/notebooks/sampling_compound_step.html
     with pm.Model() as model:
         pm_beta = pm.Beta("beta", 1.0, alpha, shape=variational_max_num_clusters)
         pm_w = pm.Deterministic("w", stick_breaking(pm_beta))
@@ -436,6 +497,9 @@ def sampling_nuts_pyro(observations,
 
     def mix_weights(beta):
         beta1m_cumprod = (1 - beta).cumprod(-1)
+        # first step: add a 1 to the end of beta
+        # second step: add a 1 to the start of beta1m_cumprod
+        # then multiply the two
         return F.pad(beta, (0, 1), value=1) * F.pad(beta1m_cumprod, (1, 0), value=1)
 
     def model(obs):

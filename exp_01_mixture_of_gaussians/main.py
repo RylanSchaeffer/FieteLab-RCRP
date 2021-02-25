@@ -6,7 +6,7 @@ from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, sampling_nuts, sampling_hmc_gibbs, variational_bayes
+from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, sampling_nuts, sampling_nuts_pyro, sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 
@@ -249,7 +249,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
     alpha = 1.5
     possible_num_samples = np.arange(10, 21, 1)
     for num_samples in possible_num_samples:
-        nuts_sampling_results = sampling_hmc_gibbs(
+        nuts_sampling_results = sampling_hmc_gibbs(  #  sampling_nuts_pyro
             observations=sampled_mog_results['gaussian_samples_seq'],
             num_samples=num_samples,
             alpha=alpha,
