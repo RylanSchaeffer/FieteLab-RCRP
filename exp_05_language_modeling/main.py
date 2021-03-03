@@ -5,12 +5,18 @@ import sklearn.feature_extraction.text
 # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
 exp_dir = 'exp_05_language_modeling'
 
+categories = None
+categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
+
+
 twenty_train = sklearn.datasets.fetch_20newsgroups(
     subset='train',
+    categories=categories,
     shuffle=True,
     random_state=0)
 twenty_test = sklearn.datasets.fetch_20newsgroups(
     subset='test',
+    categories=categories,
     shuffle=True,
     random_state=0)
 
@@ -30,6 +36,8 @@ tfidf_transformer = sklearn.feature_extraction.text.TfidfTransformer()
 X_train_tfidf = tfidf_transformer.fit_transform(X_train_counts)
 X_test_tfidf = tfidf_transformer.fit_transform(X_test_counts)
 print(X_train_tfidf.shape)
+
+temp = X_train_tfidf.toarray()
 
 
 from sklearn.naive_bayes import MultinomialNB

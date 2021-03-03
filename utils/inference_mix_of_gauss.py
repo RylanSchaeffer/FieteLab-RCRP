@@ -266,20 +266,19 @@ def sampling_hmc_gibbs(observations,
 
     # http://num.pyro.ai/en/latest/mcmc.html#numpyro.infer.hmc_gibbs.DiscreteHMCGibbs
 
-    def model(probs, locs):
-        c = numpyro.sample("c", numpyro.distributions.Categorical(probs))
-        numpyro.sample("x", numpyro.distributions.Normal(locs[c], 0.5))
+    # def model(probs, locs):
+    #     c = numpyro.sample("c", numpyro.distributions.Categorical(probs))
+    #     numpyro.sample("x", numpyro.distributions.Normal(locs[c], 0.5))
 
-    probs = jnp.array([0.15, 0.3, 0.3, 0.25])
-    locs = jnp.array([-2, 0, 2, 4])
-    kernel = numpyro.infer.DiscreteHMCGibbs(numpyro.infer.NUTS(model))
-    mcmc = numpyro.infer.MCMC(kernel, num_warmup=10, num_samples=11, progress_bar=True)
-    mcmc.run(random.PRNGKey(0), probs, locs)
-    mcmc.print_summary()
-    samples = mcmc.get_samples() #["x"]
-    assert abs(jnp.mean(samples['x']) - 1.3) < 0.1
-    assert abs(jnp.var(samples['x']) - 4.36) < 0.5
-
+    # probs = jnp.array([0.15, 0.3, 0.3, 0.25])
+    # locs = jnp.array([-2, 0, 2, 4])
+    # kernel = numpyro.infer.DiscreteHMCGibbs(numpyro.infer.NUTS(model))
+    # mcmc = numpyro.infer.MCMC(kernel, num_warmup=10, num_samples=11, progress_bar=True)
+    # mcmc.run(random.PRNGKey(0), probs, locs)
+    # mcmc.print_summary()
+    # samples = mcmc.get_samples() #["x"]
+    # assert abs(jnp.mean(samples['x']) - 1.3) < 0.1
+    # assert abs(jnp.var(samples['x']) - 4.36) < 0.5
 
     if sampling_max_num_clusters is None:
         # multiply by 2 for safety
@@ -297,14 +296,14 @@ def sampling_hmc_gibbs(observations,
                 'beta',
                 numpyro.distributions.Beta(1, alpha))
 
-        with pyro.plate('mean_plate', sampling_max_num_clusters):
+        with numpyro.plate('mean_plate', sampling_max_num_clusters):
             mean = numpyro.sample(
                 'mean',
                 numpyro.distributions.MultivariateNormal(
                     jnp.zeros(obs_dim),
                     gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
 
-        with pyro.plate('data', num_obs):
+        with numpyro.plate('data', num_obs):
             z = numpyro.sample(
                 'z',
                 numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
@@ -320,10 +319,10 @@ def sampling_hmc_gibbs(observations,
     #     z = numpyro.sample("z", numpyro.distributions.Normal(0.0, 2.0))
     #     numpyro.sample("obs", numpyro.distributions.Normal(x + z, 1.0), obs=jnp.array([1.0]))
 
-    def gibbs_fn(rng_key, gibbs_sites, hmc_sites):
-        z = hmc_sites['z']
-        new_x = numpyro.distributions.Normal(0.8 * (1 - z), jnp.sqrt(0.8)).sample(rng_key)
-        return {'x': new_x}
+    # def gibbs_fn(rng_key, gibbs_sites, hmc_sites):
+    #     z = hmc_sites['z']
+    #     new_x = numpyro.distributions.Normal(0.8 * (1 - z), jnp.sqrt(0.8)).sample(rng_key)
+    #     return {'x': new_x}
 
     hmc_kernel = numpyro.infer.NUTS(model)
     # kernel = numpyro.infer.HMCGibbs(hmc_kernel, gibbs_fn=gibbs_fn, gibbs_sites=['z'])

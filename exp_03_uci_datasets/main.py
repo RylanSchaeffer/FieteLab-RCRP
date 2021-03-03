@@ -7,6 +7,8 @@ from utils.inference import bayesian_recursion, dp_means_online, dp_means_offlin
 from utils.metrics import score_predicted_clusters
 
 
+
+# https://scikit-learn.org/stable/datasets/toy_dataset.html
 def main():
     plot_dir = 'exp_03_uci_datasets/plots'
     os.makedirs(plot_dir, exist_ok=True)
