@@ -1,5 +1,6 @@
 from jax import random
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
 import numpyro.infer
@@ -258,7 +259,6 @@ def sampling_hmc_gibbs(observations,
                        gaussian_mean_prior_cov_scaling: float,
                        sampling_max_num_clusters=None,
                        burn_fraction: float = 0.25):
-
     num_obs, obs_dim = observations.shape
 
     if sampling_max_num_clusters is None:
@@ -303,17 +303,22 @@ def sampling_hmc_gibbs(observations,
     samples = mcmc.get_samples()
 
     # shape (num samples, num centroids, obs dim)
-    params = dict(means=np.array(samples['mean']))
+    params = dict(means=np.mean(np.array(samples['mean']), axis=0))
     # shape (num samples, num obs)
-    table_assignment_posteriors = np.array(samples['z'])
+    sampled_table_assignments = np.array(samples['z'])
+    # convert sampled cluster assignments from (num samples, num obs) to (num obs, num clusters)
+    bins = np.arange(0, 2 + np.max(sampled_table_assignments))
+    table_assignment_posteriors = np.stack([
+        np.histogram(sampled_table_assignments[:, obs_idx], bins=bins, density=True)[0]
+        for obs_idx in range(num_obs)])
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
                                                         axis=0)
-    import matplotlib.pyplot as plt
-    # plt.imshow(table_assignment_posteriors, cmap='jet')
+
+    # plt.imshow(sampled_table_assignments, cmap='jet')
     # plt.show()
     plt.scatter(x=observations[:, 0],
                 y=observations[:, 1],
-                c=table_assignment_posteriors[-1, :])
+                c=sampled_table_assignments[-1, :])
     plt.title(f'Num Samples = {num_samples}')
     plt.savefig(f'exp_01_mixture_of_gaussians/plots/num_samples={num_samples}.png')
     # plt.show()
@@ -347,11 +352,8 @@ def variational_bayes(observations,
     table_assignment_posteriors = var_dp_gmm.predict_proba(observations)
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
                                                         axis=0)
-
     params = dict(means=var_dp_gmm.means_,
-                  covs=np.repeat(var_dp_gmm.covariances_[np.newaxis, :, :],
-                                 repeats=num_obs,
-                                 axis=0))
+                  covs=var_dp_gmm.covariances_)
 
     # returns classes assigned and centroids of corresponding classes
     variational_results = dict(

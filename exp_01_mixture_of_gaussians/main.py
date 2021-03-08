@@ -33,6 +33,10 @@ def main():
                                           gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
                                           plot_dir=plot_dir)
 
+    # variational_bayes_results = run_and_plot_variational_bayes(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+
     hmc_gibbs_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mog_results=sampled_mog_results,
         plot_dir=plot_dir,
@@ -258,19 +262,19 @@ def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
         # # score clusters
-        # scores, pred_cluster_labels = score_predicted_clusters(
-        #     true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-        #     table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
-        # scores_by_num_samples[num_samples] = scores
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
+        scores_by_num_samples[num_samples] = scores
 
         # count number of clusters
-        # num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
+        num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
 
-        # plot_inference_results(
-        #     sampled_mog_results=sampled_mog_results,
-        #     inference_results=nuts_sampling_results,
-        #     inference_alg='nuts_sampling={}'.format(num_samples),
-        #     plot_dir=hmc_gibbs_sampling_plot_dir)
+        plot_inference_results(
+            sampled_mog_results=sampled_mog_results,
+            inference_results=nuts_sampling_results,
+            inference_alg='hmc_gibbs={}'.format(num_samples),
+            plot_dir=hmc_gibbs_sampling_plot_dir)
 
     nuts_sampling_results = dict(
         num_clusters_by_param=num_clusters_by_num_samples
