@@ -103,21 +103,12 @@ def sample_sequence_from_ibp(T: int,
         # sample number of new dishes for new customer
         # add +1 to t because of 0-based indexing
         num_new_dishes = np.random.poisson(alpha / (t + 1))
-
-        # new dishes for new customer
         customers_dishes_draw[t, current_num_dishes:current_num_dishes + num_new_dishes] = 1
 
         # increment current num dishes
         current_num_dishes += num_new_dishes
 
     return customers_dishes_draw
-
-    # import matplotlib.pyplot as plt
-
-    # plt.imshow(customers_dishes_draw[:, :current_num_dishes])
-    # plt.ylabel('Customer Index')
-    # plt.xlabel('Dish Index')
-    # plt.show()
 
 
 vectorized_sample_sequence_from_ibp = np.vectorize(sample_sequence_from_ibp,
