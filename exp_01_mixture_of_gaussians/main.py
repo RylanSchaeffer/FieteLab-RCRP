@@ -6,7 +6,8 @@ from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, sampling_nuts, sampling_nuts_pyro, sampling_hmc_gibbs, variational_bayes
+from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline,\
+    sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 
@@ -32,7 +33,7 @@ def main():
                                           gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
                                           plot_dir=plot_dir)
 
-    nuts_sampling_results = run_and_plot_nuts_sampling(
+    hmc_gibbs_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mog_results=sampled_mog_results,
         plot_dir=plot_dir,
         gaussian_cov_scaling=gaussian_cov_scaling,
@@ -56,7 +57,7 @@ def main():
 
     inference_algs_results = {
         'Bayesian Recursion': bayesian_recursion_results,
-        # 'NUTS Sampling': nuts_sampling_results,
+        'HMC-Gibbs': hmc_gibbs_results,
         'DP-Means (Online)': dp_means_online_results,
         'DP-Means (Offline)': dp_means_offline_results,
         'Variational Bayes': variational_bayes_results,
@@ -237,39 +238,39 @@ def run_and_plot_dp_means_online(sampled_mog_results,
     return dp_means_online_results
 
 
-def run_and_plot_nuts_sampling(sampled_mog_results,
-                               plot_dir,
-                               gaussian_cov_scaling,
-                               gaussian_mean_prior_cov_scaling):
+def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
+                                    plot_dir,
+                                    gaussian_cov_scaling,
+                                    gaussian_mean_prior_cov_scaling):
 
-    nuts_sampling_plot_dir = os.path.join(plot_dir, 'nuts_sampling')
-    os.makedirs(nuts_sampling_plot_dir, exist_ok=True)
+    hmc_gibbs_sampling_plot_dir = os.path.join(plot_dir, 'hmc_gibbs_sampling')
+    os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
     num_clusters_by_num_samples = {}
     scores_by_num_samples = {}
     alpha = 1.5
-    possible_num_samples = np.arange(10, 21, 1)
+    possible_num_samples = np.arange(1000, 20001, 1000)
     for num_samples in possible_num_samples:
-        nuts_sampling_results = sampling_hmc_gibbs(  #  sampling_nuts_pyro
+        nuts_sampling_results = sampling_hmc_gibbs(
             observations=sampled_mog_results['gaussian_samples_seq'],
             num_samples=num_samples,
             alpha=alpha,
             gaussian_cov_scaling=gaussian_cov_scaling,
             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
-        # score clusters
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
-        scores_by_num_samples[num_samples] = scores
+        # # score clusters
+        # scores, pred_cluster_labels = score_predicted_clusters(
+        #     true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+        #     table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
+        # scores_by_num_samples[num_samples] = scores
 
         # count number of clusters
-        num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
+        # num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
 
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=nuts_sampling_results,
-            inference_alg='nuts_sampling={}'.format(num_samples),
-            plot_dir=nuts_sampling_plot_dir)
+        # plot_inference_results(
+        #     sampled_mog_results=sampled_mog_results,
+        #     inference_results=nuts_sampling_results,
+        #     inference_alg='nuts_sampling={}'.format(num_samples),
+        #     plot_dir=hmc_gibbs_sampling_plot_dir)
 
     nuts_sampling_results = dict(
         num_clusters_by_param=num_clusters_by_num_samples

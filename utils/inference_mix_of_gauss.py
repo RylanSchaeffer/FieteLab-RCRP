@@ -17,6 +17,8 @@ import torch
 import torch.nn.functional as F
 
 torch.set_default_tensor_type('torch.DoubleTensor')
+
+
 # torch.set_default_tensor_type('torch.FloatTensor')
 
 
@@ -95,7 +97,8 @@ def bayesian_recursion(observations,
         parameters = update_parameters_fn(
             observation=observation,
             table_assignment_posterior=table_assignment_posterior,
-            table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum[obs_idx, :len(table_assignment_posterior)],
+            table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum[obs_idx,
+                                                    :len(table_assignment_posterior)],
             parameters=parameters)
 
     bayesian_recursion_results = dict(
@@ -257,28 +260,6 @@ def sampling_hmc_gibbs(observations,
                        burn_fraction: float = 0.25):
 
     num_obs, obs_dim = observations.shape
-    # torch_observations = torch.from_numpy(observations)
-    # torch_alpha = torch.from_numpy(np.array(alpha))
-    # torch_gaussian_cov_scaling = torch.from_numpy(
-    #     np.array(gaussian_cov_scaling))
-    # torch_gaussian_mean_prior_cov_scaling = torch.from_numpy(
-    #     np.array(gaussian_mean_prior_cov_scaling))
-
-    # http://num.pyro.ai/en/latest/mcmc.html#numpyro.infer.hmc_gibbs.DiscreteHMCGibbs
-
-    # def model(probs, locs):
-    #     c = numpyro.sample("c", numpyro.distributions.Categorical(probs))
-    #     numpyro.sample("x", numpyro.distributions.Normal(locs[c], 0.5))
-
-    # probs = jnp.array([0.15, 0.3, 0.3, 0.25])
-    # locs = jnp.array([-2, 0, 2, 4])
-    # kernel = numpyro.infer.DiscreteHMCGibbs(numpyro.infer.NUTS(model))
-    # mcmc = numpyro.infer.MCMC(kernel, num_warmup=10, num_samples=11, progress_bar=True)
-    # mcmc.run(random.PRNGKey(0), probs, locs)
-    # mcmc.print_summary()
-    # samples = mcmc.get_samples() #["x"]
-    # assert abs(jnp.mean(samples['x']) - 1.3) < 0.1
-    # assert abs(jnp.var(samples['x']) - 4.36) < 0.5
 
     if sampling_max_num_clusters is None:
         # multiply by 2 for safety
@@ -314,234 +295,38 @@ def sampling_hmc_gibbs(observations,
                     gaussian_cov_scaling * jnp.eye(obs_dim)),
                 obs=obs)
 
-    # def model():
-    #     x = numpyro.sample("x", numpyro.distributions.Normal(0.0, 2.0))
-    #     z = numpyro.sample("z", numpyro.distributions.Normal(0.0, 2.0))
-    #     numpyro.sample("obs", numpyro.distributions.Normal(x + z, 1.0), obs=jnp.array([1.0]))
-
-    # def gibbs_fn(rng_key, gibbs_sites, hmc_sites):
-    #     z = hmc_sites['z']
-    #     new_x = numpyro.distributions.Normal(0.8 * (1 - z), jnp.sqrt(0.8)).sample(rng_key)
-    #     return {'x': new_x}
-
     hmc_kernel = numpyro.infer.NUTS(model)
-    # kernel = numpyro.infer.HMCGibbs(hmc_kernel, gibbs_fn=gibbs_fn, gibbs_sites=['z'])
     kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
-    mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=89, progress_bar=True)
+    mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=num_samples, progress_bar=True)
     mcmc.run(random.PRNGKey(0), obs=observations)
-    mcmc.print_summary()
-    samples = mcmc.get_samples() #["z"]
-    print(10)
-
-
-    # def mix_weights(beta):
-    #     beta1m_cumprod = (1 - beta).cumprod(-1)
-    #     return F.pad(beta, (0, 1), value=1) * F.pad(beta1m_cumprod, (1, 0), value=1)
-    #
-    # def gibbs_fn():
-    #     pass
-    #
-    # def model(obs):
-    #     with pyro.plate('beta_plate', sampling_max_num_clusters - 1):
-    #         beta = pyro.sample(
-    #             'beta',
-    #             pyro.distributions.Beta(1, torch_alpha))
-    #
-    #     with pyro.plate('mean_plate', sampling_max_num_clusters):
-    #         mean = pyro.sample(
-    #             'mean',
-    #             pyro.distributions.MultivariateNormal(
-    #                 torch.zeros(obs_dim),
-    #                 torch_gaussian_mean_prior_cov_scaling * torch.eye(obs_dim)))
-    #
-    #     with pyro.plate('data', num_obs):
-    #         z = pyro.sample(
-    #             'z',
-    #             pyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
-    #         pyro.sample(
-    #             'obs',
-    #             pyro.distributions.MultivariateNormal(
-    #                 mean[z],
-    #                 torch_gaussian_cov_scaling * torch.eye(obs_dim)),
-    #             obs=obs)
-
-
-def sampling_nuts(observations,
-                  num_samples: int,
-                  alpha: float,
-                  gaussian_cov_scaling: int,
-                  gaussian_mean_prior_cov_scaling: float,
-                  variational_max_num_clusters=None,
-                  burn_fraction: float = 0.25):
-
-    assert alpha > 0
-
-    num_obs, obs_dim = observations.shape
-
-    if variational_max_num_clusters is None:
-        # multiply by 2 for safety
-        variational_max_num_clusters = 2*int(alpha * np.log(1 + num_obs / alpha))
-
-    table_assignments = np.zeros((variational_max_num_clusters,
-                                  variational_max_num_clusters))
-    table_assignments[0, 0] = 1
-
-    # https://docs.pymc.io/notebooks/dp_mix.html
-    def stick_breaking(beta):
-        portion_remaining = tt.concatenate([[1], tt.extra_ops.cumprod(1 - beta)[:-1]])
-        return beta * portion_remaining
-
-    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
-    # Log likelihood of normal distribution
-    def logp_normal(mu, tau, value):
-        # log probability of individual samples
-        k = tau.shape[0]
-        delta = lambda mu: value - mu
-        return (-1 / 2.0) * (
-                k * tt.log(2 * np.pi)
-                + tt.log(1.0 / det(tau))
-                + (delta(mu).dot(tau) * delta(mu)).sum(axis=1)
-        )
-
-    # https://docs.pymc.io/notebooks/gaussian-mixture-model-advi.html
-    # Log likelihood of Gaussian mixture distribution
-    def logp_gmix(cluster_means, cluster_weights, tau):
-        def logp_(value):
-            logps = [tt.log(cluster_weights[i]) + logp_normal(mu, tau, value) for i, mu in enumerate(cluster_means)]
-            return tt.sum(logsumexp(tt.stacklists(logps)[:, :num_obs], axis=0))
-
-        return logp_
-
-    # https://docs.pymc.io/notebooks/sampling_compound_step.html
-    with pm.Model() as model:
-        pm_beta = pm.Beta("beta", 1.0, alpha, shape=variational_max_num_clusters)
-        pm_w = pm.Deterministic("w", stick_breaking(pm_beta))
-        pm_cluster_means = [
-            pm.MvNormal(f'cluster_mean_{cluster_idx}',
-                        mu=pm.floatX(np.zeros(obs_dim)),
-                        cov=pm.floatX(gaussian_mean_prior_cov_scaling * np.eye(obs_dim)),
-                        shape=(obs_dim,))
-            for cluster_idx in range(variational_max_num_clusters)]
-        pm_obs = pm.DensityDist('obs',
-                                logp_gmix(cluster_means=pm_cluster_means,
-                                          cluster_weights=pm_w,
-                                          tau=gaussian_cov_scaling * np.eye(obs_dim)),
-                                observed=observations)
-
-        pm_trace = pm.sample(draws=num_samples,
-                             tune=2500,
-                             chains=4,
-                             target_accept=0.9,
-                             random_seed=1)
-
-    # TODO: figure out number of clusters
-
-    # figure out which point belongs to which cluster
-    # shape (max_num_clusters, num_samples, obs_dim)
-    cluster_means_samples = np.stack([pm_trace[f'cluster_mean_{cluster_idx}']
-                                      for cluster_idx in range(variational_max_num_clusters)])
-
-    # burn the first samples
-    cluster_means_samples = cluster_means_samples[:, int(burn_fraction * num_samples):, :]
-    cluster_means = np.mean(cluster_means_samples, axis=1)
-
-    distance_obs_to_cluster_means = cdist(observations, cluster_means)
-    table_assignment_posteriors = np.exp(-np.square(distance_obs_to_cluster_means) / 2)
-    table_assignment_posteriors *= np.power(2. * np.pi, -obs_dim / 2.)
-
-    # normalize to get posterior distributions
-    table_assignment_posteriors = np.divide(
-        table_assignment_posteriors,
-        np.sum(table_assignment_posteriors, axis=1)[:, np.newaxis])
-    assert np.allclose(np.sum(table_assignment_posteriors, axis=1), 1.)
-
-    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
-                                                        axis=0)
-
-    params = dict(means=cluster_means,
-                  covs=np.repeat(np.eye(obs_dim)[np.newaxis, :, :],
-                                 repeats=num_obs,
-                                 axis=0))
-
-    nuts_sampling_results = dict(
-        table_assignment_posteriors=table_assignment_posteriors,
-        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
-        parameters=params)
-
-    return nuts_sampling_results
-
-
-def sampling_nuts_pyro(observations,
-                       num_samples: int,
-                       alpha: float,
-                       gaussian_cov_scaling: int,
-                       gaussian_mean_prior_cov_scaling: float,
-                       sampling_max_num_clusters=None,
-                       burn_fraction: float = 0.25):
-
-    pyro.enable_validation(True)
-    pyro.set_rng_seed(0)
-
-    num_obs, obs_dim = observations.shape
-    torch_observations = torch.from_numpy(observations)
-    torch_alpha = torch.from_numpy(np.array(alpha))
-    torch_gaussian_cov_scaling = torch.from_numpy(
-        np.array(gaussian_cov_scaling))
-    torch_gaussian_mean_prior_cov_scaling = torch.from_numpy(
-        np.array(gaussian_mean_prior_cov_scaling))
-
-    if sampling_max_num_clusters is None:
-        # multiply by 2 for safety
-        sampling_max_num_clusters = 2 * int(alpha * np.log(1 + num_obs / alpha))
-
-    def mix_weights(beta):
-        beta1m_cumprod = (1 - beta).cumprod(-1)
-        # first step: add a 1 to the end of beta
-        # second step: add a 1 to the start of beta1m_cumprod
-        # then multiply the two
-        return F.pad(beta, (0, 1), value=1) * F.pad(beta1m_cumprod, (1, 0), value=1)
-
-    def model(obs):
-        with pyro.plate('beta_plate', sampling_max_num_clusters - 1):
-            beta = pyro.sample(
-                'beta',
-                pyro.distributions.Beta(1, torch_alpha))
-
-        with pyro.plate('mean_plate', sampling_max_num_clusters):
-            mean = pyro.sample(
-                'mean',
-                pyro.distributions.MultivariateNormal(
-                    torch.zeros(obs_dim),
-                    torch_gaussian_mean_prior_cov_scaling * torch.eye(obs_dim)))
-
-        with pyro.plate('data', num_obs):
-            z = pyro.sample(
-                'z',
-                pyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
-            pyro.sample(
-                'obs',
-                pyro.distributions.MultivariateNormal(
-                    mean[z],
-                    torch_gaussian_cov_scaling * torch.eye(obs_dim)),
-                obs=obs)
-
-    # serving_model = pyro.infer.infer_discrete(model, first_available_dim=-1)
-    nuts_kernel = pyro.infer.NUTS(model=model, adapt_step_size=True)
-    mcmc = pyro.infer.MCMC(
-        kernel=nuts_kernel,
-        num_samples=num_samples,
-        warmup_steps=3)
-    mcmc.run(torch_observations)
+    # mcmc.print_summary()
     samples = mcmc.get_samples()
 
+    # shape (num samples, num centroids, obs dim)
+    params = dict(means=np.array(samples['mean']))
+    # shape (num samples, num obs)
+    table_assignment_posteriors = np.array(samples['z'])
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
     import matplotlib.pyplot as plt
-    for cluster_idx in range(sampling_max_num_clusters):
-        plt.scatter(samples['mean'][-1, cluster_idx, 0],
-                 samples['mean'][-1, cluster_idx, 1],
-                 label=cluster_idx)
-    plt.legend()
-    plt.show()
-    print(10)
+    # plt.imshow(table_assignment_posteriors, cmap='jet')
+    # plt.show()
+    plt.scatter(x=observations[:, 0],
+                y=observations[:, 1],
+                c=table_assignment_posteriors[-1, :])
+    plt.title(f'Num Samples = {num_samples}')
+    plt.savefig(f'exp_01_mixture_of_gaussians/plots/num_samples={num_samples}.png')
+    # plt.show()
+    plt.close()
+
+    # returns classes assigned and centroids of corresponding classes
+    hmc_gibbs_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=params,
+    )
+
+    return hmc_gibbs_results
 
 
 def variational_bayes(observations,

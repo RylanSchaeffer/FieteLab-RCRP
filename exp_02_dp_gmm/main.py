@@ -1,11 +1,12 @@
 import numpy as np
+import os
 import pandas as pd
 
 from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_no_nan_no_inf
-from utils.mix_of_gauss_inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
 from utils.metrics import score_predicted_clusters
 
 
@@ -238,7 +239,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
                                plot_dir,
                                gaussian_cov_scaling,
                                gaussian_mean_prior_cov_scaling):
-    nuts_sampling_plot_dir = os.path.join(plot_dir, 'nuts_sampling')
+    nuts_sampling_plot_dir = os.path.join(plot_dir, 'gibbs_sampling')
     os.makedirs(nuts_sampling_plot_dir, exist_ok=True)
     num_clusters_by_num_samples = {}
 
@@ -259,7 +260,7 @@ def run_and_plot_nuts_sampling(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=nuts_sampling_results,
-            inference_alg='nuts_sampling={}'.format(num_samples),
+            inference_alg='gibbs_sampling={}'.format(num_samples),
             plot_dir=nuts_sampling_plot_dir)
 
     nuts_sampling_results = dict(
