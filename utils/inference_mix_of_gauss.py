@@ -314,16 +314,6 @@ def sampling_hmc_gibbs(observations,
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
                                                         axis=0)
 
-    # plt.imshow(sampled_table_assignments, cmap='jet')
-    # plt.show()
-    plt.scatter(x=observations[:, 0],
-                y=observations[:, 1],
-                c=np.argmax(table_assignment_posteriors, axis=1))
-    plt.title(f'Num Samples = {num_samples}')
-    plt.savefig(f'exp_01_mixture_of_gaussians/plots/hmc_gibbs_num_samples={num_samples}.png')
-    # plt.show()
-    plt.close()
-
     # returns classes assigned and centroids of corresponding classes
     hmc_gibbs_results = dict(
         table_assignment_posteriors=table_assignment_posteriors,
