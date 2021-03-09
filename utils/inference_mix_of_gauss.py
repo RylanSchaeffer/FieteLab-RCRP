@@ -263,7 +263,7 @@ def sampling_hmc_gibbs(observations,
 
     if sampling_max_num_clusters is None:
         # multiply by 2 for safety
-        sampling_max_num_clusters = 2 * int(alpha * np.log(1 + num_obs / alpha))
+        sampling_max_num_clusters = 2 * int(np.ceil(alpha * np.log(1 + num_obs / alpha)))
 
     def mix_weights(beta):
         beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
@@ -303,13 +303,13 @@ def sampling_hmc_gibbs(observations,
     samples = mcmc.get_samples()
 
     # shape (num samples, num centroids, obs dim)
-    params = dict(means=np.mean(np.array(samples['mean']), axis=0))
+    params = dict(means=np.mean(np.array(samples['mean'][-1000:, :, :]), axis=0))
     # shape (num samples, num obs)
     sampled_table_assignments = np.array(samples['z'])
     # convert sampled cluster assignments from (num samples, num obs) to (num obs, num clusters)
     bins = np.arange(0, 2 + np.max(sampled_table_assignments))
     table_assignment_posteriors = np.stack([
-        np.histogram(sampled_table_assignments[:, obs_idx], bins=bins, density=True)[0]
+        np.histogram(sampled_table_assignments[-1000:, obs_idx], bins=bins, density=True)[0]
         for obs_idx in range(num_obs)])
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
                                                         axis=0)
@@ -318,9 +318,9 @@ def sampling_hmc_gibbs(observations,
     # plt.show()
     plt.scatter(x=observations[:, 0],
                 y=observations[:, 1],
-                c=sampled_table_assignments[-1, :])
+                c=np.argmax(table_assignment_posteriors, axis=1))
     plt.title(f'Num Samples = {num_samples}')
-    plt.savefig(f'exp_01_mixture_of_gaussians/plots/num_samples={num_samples}.png')
+    plt.savefig(f'exp_01_mixture_of_gaussians/plots/hmc_gibbs_num_samples={num_samples}.png')
     # plt.show()
     plt.close()
 

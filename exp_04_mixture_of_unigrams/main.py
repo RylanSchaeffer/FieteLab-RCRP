@@ -8,7 +8,7 @@ from exp_04_mixture_of_unigrams.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
 from utils.helpers import assert_no_nan_no_inf
-from utils.mou_inference import bayesian_recursion
+from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization
 from utils.metrics import score_predicted_clusters
 
 
@@ -35,11 +35,13 @@ def main():
 
     inference_algs_results = {
         'Bayesian Recursion': bayesian_recursion_results,
-        # 'NUTS Sampling': nuts_sampling_results,
-        # 'DP-Means (Online)': dp_means_online_results,
-        # 'DP-Means (Offline)': dp_means_offline_results,
-        # 'Variational Bayes': variational_bayes_results,
     }
+    for num_iter in [15, 5, 1]:
+        inference_algs_results[f'Expectation Maximization (Num Iter={num_iter})'] = \
+            run_and_plot_expectation_maximization(
+                sampled_mou_results=sampled_mou_results,
+                plot_dir=plot_dir,
+                num_iter=num_iter)
 
     plot_inference_algs_comparison(
         inference_algs_results=inference_algs_results,
@@ -170,6 +172,44 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
 
     return bayesian_recursion_results
 
+
+def run_and_plot_expectation_maximization(sampled_mou_results: dict,
+                                          plot_dir: str,
+                                          num_iter: int):
+    alphas = 0.01 + np.arange(0., 10.01, 0.5)
+    expectation_maximization_plot_dir = os.path.join(plot_dir, 'expectation_maximization')
+    os.makedirs(expectation_maximization_plot_dir, exist_ok=True)
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    for alpha in alphas:
+        expectation_maximization_results = expectation_maximization(
+            docs=sampled_mou_results['doc_samples_seq'],
+            alpha=alpha,
+            num_iter=num_iter)
+
+        # record scores
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mou_results['assigned_table_seq'],
+            table_assignment_posteriors=expectation_maximization_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
+        # count number of clusters
+        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
+
+        # plot_inference_results(
+        #     sampled_mou_results=sampled_mou_results,
+        #     inference_results=bayesian_recursion_results,
+        #     inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
+        #     plot_dir=bayesian_recursion_plot_dir)
+
+        print('Finished Expectation Maximization alpha={:.2f}'.format(alpha))
+
+    expectation_maximization_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T,
+    )
+
+    return expectation_maximization_results
 
 if __name__ == '__main__':
     main()

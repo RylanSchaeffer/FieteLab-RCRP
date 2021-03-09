@@ -1,4 +1,10 @@
+from jax import random
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
+import numpyro
+import numpyro.infer
+import numpyro.distributions
 
 from utils.helpers import assert_no_nan_no_inf
 
@@ -193,3 +199,84 @@ def expectation_maximization(docs,
     )
 
     return expectation_maximization_results
+
+
+def sampling_hmc_gibbs(docs,
+                       num_samples: int,
+                       alpha: float,
+                       beta: float,
+                       sampling_max_num_clusters=None,
+                       burn_fraction: float = 0.25):
+
+    num_docs, vocab_dim = docs.shape
+    if sampling_max_num_clusters is None:
+        # multiply by 2 as heuristic
+        sampling_max_num_clusters = 2 * int(alpha * np.log(1 + num_docs / alpha))
+
+    def mix_weights(beta):
+        beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
+        term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
+        term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
+        return jnp.multiply(term1, term2)
+
+    def model(obs):
+        with numpyro.plate('beta_plate', sampling_max_num_clusters - 1):
+            beta = numpyro.sample(
+                'beta',
+                numpyro.distributions.Beta(1, alpha))
+
+        with numpyro.plate('word_prob_vectors_plate', sampling_max_num_clusters):
+            mean = numpyro.sample(
+                'word_prob_vectors',
+                numpyro.distributions.Dirichlet(
+                    concentration=))
+
+        with numpyro.plate('data', num_docs):
+            z = numpyro.sample(
+                'z',
+                numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+            numpyro.sample(
+                'obs',
+                numpyro.distributions.MultivariateNormal(
+                    mean[z],
+                    gaussian_cov_scaling * jnp.eye(vocab_dim)),
+                obs=obs)
+
+    hmc_kernel = numpyro.infer.NUTS(model)
+    kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
+    mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=num_samples, progress_bar=True)
+    mcmc.run(random.PRNGKey(0), obs=docs)
+    # mcmc.print_summary()
+    samples = mcmc.get_samples()
+
+    # shape (num samples, num centroids, obs dim)
+    # only keep last 1000 samples
+    parameters = dict(means=np.mean(np.array(samples['mean'][-1000:, :, :]), axis=0))
+    # shape (num samples, num obs)
+    sampled_table_assignments = np.array(samples['z'])
+    # convert sampled cluster assignments from (num samples, num obs) to (num obs, num clusters)
+    bins = np.arange(0, 2 + np.max(sampled_table_assignments))
+    table_assignment_posteriors = np.stack([
+        np.histogram(sampled_table_assignments[-1000:, obs_idx], bins=bins, density=True)[0]
+        for obs_idx in range(num_docs)])
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    # plt.imshow(sampled_table_assignments, cmap='jet')
+    # plt.show()
+    plt.scatter(x=docs[:, 0],
+                y=docs[:, 1],
+                c=np.argmax(table_assignment_posteriors, axis=1))
+    plt.title(f'Num Samples = {num_samples}')
+    plt.savefig(f'exp_04_mixture_of_unigrams/plots/hmc_gibbs_num_samples={num_samples}.png')
+    # plt.show()
+    plt.close()
+
+    # returns classes assigned and centroids of corresponding classes
+    hmc_gibbs_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=parameters,
+    )
+
+    return hmc_gibbs_results

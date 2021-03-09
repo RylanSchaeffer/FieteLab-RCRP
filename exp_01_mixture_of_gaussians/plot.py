@@ -125,8 +125,6 @@ def plot_inference_algs_comparison(inference_algs_results: dict,
         inference_algs_results=inference_algs_results,
         plot_dir=plot_dir)
 
-    print(10)
-
 
 def plot_inference_algs_num_clusters_by_param(inference_algs_results: dict,
                                               plot_dir: str,

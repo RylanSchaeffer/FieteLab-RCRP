@@ -33,38 +33,34 @@ def main():
                                           gaussian_samples_seq=sampled_mog_results['gaussian_samples_seq'],
                                           plot_dir=plot_dir)
 
-    # variational_bayes_results = run_and_plot_variational_bayes(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir)
-
     hmc_gibbs_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mog_results=sampled_mog_results,
         plot_dir=plot_dir,
         gaussian_cov_scaling=gaussian_cov_scaling,
         gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
 
-    bayesian_recursion_results = run_and_plot_bayesian_recursion(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    dp_means_offline_results = run_and_plot_dp_means_offline(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    dp_means_online_results = run_and_plot_dp_means_online(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    variational_bayes_results = run_and_plot_variational_bayes(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
+    # bayesian_recursion_results = run_and_plot_bayesian_recursion(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # dp_means_offline_results = run_and_plot_dp_means_offline(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # dp_means_online_results = run_and_plot_dp_means_online(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # variational_bayes_results = run_and_plot_variational_bayes(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
 
     inference_algs_results = {
-        'Bayesian Recursion': bayesian_recursion_results,
+        # 'Bayesian Recursion': bayesian_recursion_results,
         'HMC-Gibbs': hmc_gibbs_results,
-        'DP-Means (Online)': dp_means_online_results,
-        'DP-Means (Offline)': dp_means_offline_results,
-        'Variational Bayes': variational_bayes_results,
+        # 'DP-Means (Online)': dp_means_online_results,
+        # 'DP-Means (Offline)': dp_means_offline_results,
+        # 'Variational Bayes': variational_bayes_results,
     }
 
     plot_inference_algs_comparison(
@@ -249,14 +245,13 @@ def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
 
     hmc_gibbs_sampling_plot_dir = os.path.join(plot_dir, 'hmc_gibbs_sampling')
     os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
-    num_clusters_by_num_samples = {}
-    scores_by_num_samples = {}
-    alpha = 1.5
-    possible_num_samples = np.arange(1000, 20001, 1000)
-    for num_samples in possible_num_samples:
-        nuts_sampling_results = sampling_hmc_gibbs(
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    alphas = np.arange(0.01, 5.01, 0.1)
+    for alpha in alphas:
+        sampling_hmc_gibbs_results = sampling_hmc_gibbs(
             observations=sampled_mog_results['gaussian_samples_seq'],
-            num_samples=num_samples,
+            num_samples=5000,
             alpha=alpha,
             gaussian_cov_scaling=gaussian_cov_scaling,
             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
@@ -264,23 +259,24 @@ def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
         # # score clusters
         scores, pred_cluster_labels = score_predicted_clusters(
             true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=nuts_sampling_results['table_assignment_posteriors'])
-        scores_by_num_samples[num_samples] = scores
+            table_assignment_posteriors=sampling_hmc_gibbs_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
 
         # count number of clusters
-        num_clusters_by_num_samples[num_samples] = len(np.unique(pred_cluster_labels))
+        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
 
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
-            inference_results=nuts_sampling_results,
-            inference_alg='hmc_gibbs={}'.format(num_samples),
+            inference_results=sampling_hmc_gibbs_results,
+            inference_alg='hmc_gibbs={}'.format(alpha),
             plot_dir=hmc_gibbs_sampling_plot_dir)
 
-    nuts_sampling_results = dict(
-        num_clusters_by_param=num_clusters_by_num_samples
+    sampling_hmc_gibbs_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T
     )
 
-    return nuts_sampling_results
+    return sampling_hmc_gibbs_results
 
 
 def run_and_plot_variational_bayes(sampled_mog_results,
