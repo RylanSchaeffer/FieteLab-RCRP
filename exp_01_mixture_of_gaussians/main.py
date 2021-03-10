@@ -1,3 +1,4 @@
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -20,10 +21,29 @@ def main():
     sampled_mog_results_by_dataset = {}
     # generate lots of datasets and record performance
     for dataset_idx in range(num_datasets):
-        dataset_inference_algs_results, dataset_sampled_mog_results = \
-            run_one_dataset(plot_dir=os.path.join(plot_dir, f'dataset={dataset_idx}'))
-        inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
-        sampled_mog_results_by_dataset[dataset_idx] = dataset_sampled_mog_results
+        dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
+        dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
+
+        if os.path.isfile(dataset_results_path):
+            # load from disk if exists
+            dataset_results = joblib.load(dataset_results_path)
+        else:
+            # otherwise, generate anew
+            dataset_inference_algs_results, dataset_sampled_mog_results = \
+                run_one_dataset(plot_dir=dataset_dir)
+            dataset_results = dict(
+                dataset_inference_algs_results=dataset_inference_algs_results,
+                dataset_sampled_mog_results=dataset_sampled_mog_results,
+            )
+            joblib.dump(dataset_results, dataset_results_path)
+
+            # delete variables from memory and perform fresh read from disk
+            del dataset_inference_algs_results, dataset_sampled_mog_results
+            del dataset_results
+            dataset_results = joblib.load(dataset_results_path)
+
+        inference_algs_results_by_dataset[dataset_idx] = dataset_results['dataset_inference_algs_results']
+        sampled_mog_results_by_dataset[dataset_idx] = dataset_results['dataset_sampled_mog_results']
 
     plot_inference_algs_comparison(
         plot_dir=plot_dir,
@@ -144,7 +164,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
 
         return parameters
 
-    alphas = 0.01 + np.arange(0., 5.01, .1)
+    alphas = 0.01 + np.arange(0., 5.01, 0.1)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}

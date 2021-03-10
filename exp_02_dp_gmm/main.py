@@ -61,9 +61,9 @@ def main():
     }
 
     plot_inference_algs_comparison(
-        inference_algs_results_by_dataset=inference_algs_results,
+        inference_algs_results=inference_algs_results,
         plot_dir=plot_dir,
-        sampled_mog_results_by_dataset=sampled_mog_results)
+        sampled_mog_results=sampled_mog_results)
 
 
 def run_and_plot_bayesian_recursion(sampled_mog_results,
