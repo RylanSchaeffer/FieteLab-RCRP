@@ -121,7 +121,6 @@ def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
     scoring_metrics = inference_algs_results_by_dataset[0][inference_algs[0]]['scores_by_param'].columns.values
 
     # we have four dimensions of interest: inference_alg, dataset idx, scoring metric, concentration parameter
-    # we want to average over datasets
 
     # construct dictionary mapping from inference alg to dataframe
     # with dataset idx as rows and concentration parameters as columns
