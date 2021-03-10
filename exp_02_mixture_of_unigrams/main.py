@@ -7,7 +7,7 @@ from exp_02_mixture_of_unigrams.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization
+from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization, sampling_hmc_gibbs
 from utils.metrics import score_predicted_clusters
 
 
@@ -52,7 +52,7 @@ def main():
 
 
 def run_one_dataset(plot_dir,
-                    dp_concentration_param: float = 4.6,
+                    dp_concentration_param: float = 4.6,  #5.7
                     prior_over_topic_parameters: float = 0.3):
 
     # sample data
@@ -62,12 +62,26 @@ def run_one_dataset(plot_dir,
         unigram_params=dict(dp_concentration_param=dp_concentration_param,
                             prior_over_topic_parameters=prior_over_topic_parameters))
 
-    bayesian_recursion_results = run_and_plot_bayesian_recursion(
+    # bayesian_recursion_results = run_and_plot_bayesian_recursion(
+    #     sampled_mou_results=sampled_mou_results,
+    #     plot_dir=plot_dir)
+
+    hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mou_results=sampled_mou_results,
-        plot_dir=plot_dir)
+        plot_dir=plot_dir,
+        num_samples=5000)
+
+    hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
+        sampled_mou_results=sampled_mou_results,
+        plot_dir=plot_dir,
+        gaussian_cov_scaling=gaussian_cov_scaling,
+        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+        num_samples=20000)
 
     inference_algs_results = {
-        'Bayesian Recursion': bayesian_recursion_results,
+        # 'Bayesian Recursion': bayesian_recursion_results,
+        'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
+        'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
     }
     for num_iter in [15, 5, 1]:
         inference_algs_results[f'Expectation Maximization (Num Iter={num_iter})'] = \
@@ -203,6 +217,45 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
     return bayesian_recursion_results
 
 
+def run_and_plot_hmc_gibbs_sampling(sampled_mou_results,
+                                    plot_dir,
+                                    num_samples: int = 5000):
+
+    hmc_gibbs_sampling_plot_dir = os.path.join(plot_dir,
+                                               f'hmc_gibbs_sampling_nsamples={num_samples}')
+    os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    alphas = np.arange(0.01, 5.01, 0.1)
+    for alpha in alphas:
+        sampling_hmc_gibbs_results = sampling_hmc_gibbs(
+            docs=sampled_mou_results['doc_samples_seq'],
+            num_samples=num_samples,
+            alpha=alpha,)
+
+        # # score clusters
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mou_results['assigned_table_seq'],
+            table_assignment_posteriors=sampling_hmc_gibbs_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
+        # count number of clusters
+        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
+
+        # plot_inference_results(
+        #     sampled_mou_results=sampled_mou_results,
+        #     inference_results=sampling_hmc_gibbs_results,
+        #     inference_alg='hmc_gibbs={:.2f}'.format(alpha),
+        #     plot_dir=hmc_gibbs_sampling_plot_dir)
+
+    sampling_hmc_gibbs_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T
+    )
+
+    return sampling_hmc_gibbs_results
+
+
 def run_and_plot_expectation_maximization(sampled_mou_results: dict,
                                           plot_dir: str,
                                           num_iter: int):
@@ -228,9 +281,9 @@ def run_and_plot_expectation_maximization(sampled_mou_results: dict,
 
         # plot_inference_results(
         #     sampled_mou_results=sampled_mou_results,
-        #     inference_results=bayesian_recursion_results,
+        #     inference_results=expectation_maximization_results,
         #     inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
-        #     plot_dir=bayesian_recursion_plot_dir)
+        #     plot_dir=expectation_maximization_plot_dir)
 
         print('Finished Expectation Maximization alpha={:.2f}'.format(alpha))
 
