@@ -7,4 +7,4 @@
 #SBATCH --mail-type=FAIL
 
 export PYTHONPATH=.
-python -u exp_04_mixture_of_unigrams/main.py        # -u flushes output buffer immediately
+python -u exp_02_mixture_of_unigrams/main.py        # -u flushes output buffer immediately

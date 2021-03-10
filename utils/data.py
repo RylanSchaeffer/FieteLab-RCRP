@@ -24,8 +24,8 @@ def generate_mixture_of_gaussians(num_gaussians: int = 3,
 
 def generate_mixture_of_unigrams(num_topics: int,
                                  vocab_dim: int,
-                                 dp_concentration_param: float = 5.7,
-                                 prior_over_topic_parameters: float = 0.8):
+                                 dp_concentration_param: float,
+                                 prior_over_topic_parameters: float):
 
     assert dp_concentration_param > 0
     assert prior_over_topic_parameters > 0
@@ -188,12 +188,19 @@ def sample_sequence_from_mixture_of_unigrams(seq_len: int = 450,
 
     # create sequence of Multinomial samples from (num_topics, vocab_dim)
     # draw a Sample of num_docs documents each of size doc_len
-    assigned_table_seq_one_hot = np.random.multinomial(
-        n=1,
-        pvals=mixture_of_unigrams['stick_weights'],
-        size=seq_len)
-    # convert assigned table sequence to one-hot codes
-    assigned_table_seq = np.argmax(assigned_table_seq_one_hot, axis=1)
+    num_topics_in_corpus = 0
+    # rejection sample till we get dataset with correct number of topics
+    num_samples = 0
+    while num_topics_in_corpus != num_topics:
+        assigned_table_seq_one_hot = np.random.multinomial(
+            n=1,
+            pvals=mixture_of_unigrams['stick_weights'],
+            size=seq_len)
+        # convert assigned table sequence to one-hot codes
+        assigned_table_seq = np.argmax(assigned_table_seq_one_hot, axis=1)
+        num_topics_in_corpus = len(np.unique(assigned_table_seq))
+        num_samples += 1
+        print(f'Num of corpus samples: {num_samples}')
 
     doc_samples_seq = np.zeros(shape=(seq_len, vocab_dim))
     for doc_idx in range(seq_len):

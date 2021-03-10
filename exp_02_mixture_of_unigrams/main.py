@@ -16,7 +16,7 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
-    num_datasets = 30
+    num_datasets = 5
     inference_algs_results_by_dataset = {}
     sampled_mog_results_by_dataset = {}
     # generate lots of datasets and record performance
@@ -52,12 +52,13 @@ def main():
 
 
 def run_one_dataset(plot_dir,
-                    dp_concentration_param: float = 5.7,
+                    dp_concentration_param: float = 4.6,
                     prior_over_topic_parameters: float = 0.3):
 
     # sample data
     sampled_mou_results = sample_sequence_from_mixture_of_unigrams(
         seq_len=150,
+        num_topics=7,
         unigram_params=dict(dp_concentration_param=dp_concentration_param,
                             prior_over_topic_parameters=prior_over_topic_parameters))
 
