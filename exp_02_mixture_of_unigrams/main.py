@@ -7,7 +7,8 @@ from exp_02_mixture_of_unigrams.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization, sampling_hmc_gibbs
+from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization, sampling_hmc_gibbs, \
+    stochastic_variational_inference
 from utils.metrics import score_predicted_clusters
 
 
@@ -52,9 +53,8 @@ def main():
 
 
 def run_one_dataset(plot_dir,
-                    dp_concentration_param: float = 4.6,  #5.7
+                    dp_concentration_param: float = 4.6,
                     prior_over_topic_parameters: float = 0.3):
-
     # sample data
     sampled_mou_results = sample_sequence_from_mixture_of_unigrams(
         seq_len=150,
@@ -62,9 +62,13 @@ def run_one_dataset(plot_dir,
         unigram_params=dict(dp_concentration_param=dp_concentration_param,
                             prior_over_topic_parameters=prior_over_topic_parameters))
 
-    # bayesian_recursion_results = run_and_plot_bayesian_recursion(
-    #     sampled_mou_results=sampled_mou_results,
-    #     plot_dir=plot_dir)
+    variational_bayes_results = run_and_plot_stochastic_variational_inference(
+        sampled_mou_results=sampled_mou_results,
+        plot_dir=plot_dir)
+
+    bayesian_recursion_results = run_and_plot_bayesian_recursion(
+        sampled_mou_results=sampled_mou_results,
+        plot_dir=plot_dir)
 
     hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mou_results=sampled_mou_results,
@@ -74,8 +78,6 @@ def run_one_dataset(plot_dir,
     hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
         sampled_mou_results=sampled_mou_results,
         plot_dir=plot_dir,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
         num_samples=20000)
 
     inference_algs_results = {
@@ -95,7 +97,6 @@ def run_one_dataset(plot_dir,
 
 def run_and_plot_bayesian_recursion(sampled_mou_results,
                                     plot_dir):
-
     def likelihood_fn(doc, parameters):
         # create new mean for new table, centered at that point
         # initialize possible new cluster with parameters matching doc word count
@@ -161,7 +162,6 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
                              table_assignment_posteriors_running_sum,
                              table_assignment_posterior,
                              parameters):
-
         # update parameters based on Dirichlet prior and Multinomial likelihood
         # floating point errors are common here because such small values!
         probability_prefactor = np.divide(table_assignment_posterior,
@@ -220,18 +220,17 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
 def run_and_plot_hmc_gibbs_sampling(sampled_mou_results,
                                     plot_dir,
                                     num_samples: int = 5000):
-
     hmc_gibbs_sampling_plot_dir = os.path.join(plot_dir,
                                                f'hmc_gibbs_sampling_nsamples={num_samples}')
     os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
     scores_by_alpha = {}
-    alphas = np.arange(0.01, 5.01, 0.1)
+    alphas = np.arange(0.01, 5.01, 0.2)
     for alpha in alphas:
         sampling_hmc_gibbs_results = sampling_hmc_gibbs(
             docs=sampled_mou_results['doc_samples_seq'],
             num_samples=num_samples,
-            alpha=alpha,)
+            alpha=alpha, )
 
         # # score clusters
         scores, pred_cluster_labels = score_predicted_clusters(
@@ -293,6 +292,46 @@ def run_and_plot_expectation_maximization(sampled_mou_results: dict,
     )
 
     return expectation_maximization_results
+
+
+def run_and_plot_stochastic_variational_inference(sampled_mou_results,
+                                                  plot_dir,
+                                                  num_steps: int = 5000):
+    alphas = 0.01 + np.arange(0., 5.01, 0.1)
+    svi_plot_dir = os.path.join(plot_dir, 'svi')
+    os.makedirs(svi_plot_dir, exist_ok=True)
+    num_clusters_by_alpha = {}
+    scores_by_alpha = {}
+    for alpha in alphas:
+        stochastic_variational_inference_results = stochastic_variational_inference(
+            docs=sampled_mou_results['doc_samples_seq'],
+            num_steps=num_steps,
+            alpha=alpha)
+
+        # score clusters
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mou_results['assigned_table_seq'],
+            table_assignment_posteriors=stochastic_variational_inference_results['table_assignment_posteriors'])
+        scores_by_alpha[alpha] = scores
+
+        # count number of clusters
+        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
+
+        # plot_inference_results(
+        #     sampled_mog_results=sampled_mou_results,
+        #     inference_results=stochastic_variational_inference_results,
+        #     inference_alg='variational_bayes={:.2f}'.format(alpha),
+        #     plot_dir=svi_plot_dir)
+
+        print('Finished Variational Bayes alpha={:.2f}'.format(alpha))
+
+    stochastic_variational_inference_results = dict(
+        num_clusters_by_param=num_clusters_by_alpha,
+        scores_by_param=pd.DataFrame(scores_by_alpha).T,
+    )
+
+    return stochastic_variational_inference_results
+
 
 if __name__ == '__main__':
     main()

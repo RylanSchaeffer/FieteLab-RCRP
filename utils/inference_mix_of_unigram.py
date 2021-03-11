@@ -1,10 +1,11 @@
-from jax import random
 import jax.numpy as jnp
+import jax.random
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
 import numpyro.infer
 import numpyro.distributions
+import numpyro.distributions.constraints
 
 from utils.helpers import assert_no_nan_no_inf
 
@@ -245,7 +246,7 @@ def sampling_hmc_gibbs(docs,
     hmc_kernel = numpyro.infer.NUTS(model)
     kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
     mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=num_samples, progress_bar=True)
-    mcmc.run(random.PRNGKey(0), obs=docs)
+    mcmc.run(jax.random.PRNGKey(0), obs=docs)
     # mcmc.print_summary()
     samples = mcmc.get_samples()
 
@@ -287,3 +288,123 @@ def sampling_hmc_gibbs(docs,
     )
 
     return hmc_gibbs_results
+
+
+def stochastic_variational_inference(docs,
+                                     num_steps: int,
+                                     alpha: float,
+                                     epsilon: float = 10,
+                                     variational_max_num_clusters=None):
+    num_docs, vocab_dim = docs.shape
+    doc_len = np.sum(docs, axis=1)[0].astype(int)
+    if variational_max_num_clusters is None:
+        # multiply by 2 as heuristic
+        variational_max_num_clusters = 2 * int(np.ceil(alpha * np.log(1 + num_docs / alpha)))
+
+    def mix_weights(beta):
+        beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
+        term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
+        term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
+        return jnp.multiply(term1, term2)
+
+    def model(obs):
+        with numpyro.plate('beta_plate', variational_max_num_clusters - 1):
+            beta = numpyro.sample(
+                'beta',
+                numpyro.distributions.Beta(1, alpha))
+
+        with numpyro.plate('word_prob_vectors_plate', variational_max_num_clusters):
+            topics_word_prob_vectors = numpyro.sample(
+                'topics_word_prob_vectors',
+                numpyro.distributions.Dirichlet(
+                    concentration=jnp.full(shape=vocab_dim, fill_value=epsilon)))
+
+        with numpyro.plate('data', num_docs):
+            z = numpyro.sample(
+                'z',
+                numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))  # TODO: is mask necessary?
+            numpyro.sample(
+                'obs',
+                numpyro.distributions.Multinomial(
+                    total_count=doc_len,
+                    probs=topics_word_prob_vectors[z]),
+                obs=obs)
+
+    def guide(obs):
+        q_beta_p_alpha = numpyro.param('q_beta_p_alpha',
+                                       jax.random.uniform(key=jax.random.PRNGKey(0),
+                                                          minval=0,
+                                                          maxval=2,
+                                                          shape=(variational_max_num_clusters - 1,)),
+                                       constraint=numpyro.distributions.constraints.positive)
+
+        with numpyro.plate('beta_plate', variational_max_num_clusters - 1):
+            q_beta = numpyro.sample(
+                'beta',
+                numpyro.distributions.Beta(
+                    concentration0=jnp.ones(variational_max_num_clusters - 1),
+                    concentration1=q_beta_p_alpha)
+            )
+
+        q_topics_word_prob_vectors_p_alphas = numpyro.param('q_topics_word_prob_vectors_p_alphas',
+                                                            jax.random.exponential(key=jax.random.PRNGKey(0),
+                                                                                   shape=(variational_max_num_clusters,
+                                                                                          vocab_dim)),
+                                                            constraint=numpyro.distributions.constraints.positive)
+
+        with numpyro.plate('word_prob_vectors_plate', variational_max_num_clusters):
+            q_topics_word_prob_vectors = numpyro.sample(
+                'topics_word_prob_vectors',
+                numpyro.distributions.Dirichlet(
+                    concentration=q_topics_word_prob_vectors_p_alphas)
+            )
+
+        q_z_p_probs = numpyro.param('q_z_p_probs',
+                                    jax.random.dirichlet(key=jax.random.PRNGKey(0),
+                                                         alpha=jnp.ones(
+                                                             variational_max_num_clusters) / variational_max_num_clusters,
+                                                         shape=(num_docs,)),
+                                    constraint=numpyro.distributions.constraints.simplex)
+
+        with numpyro.plate('data', num_docs):
+            q_z = numpyro.sample(
+                'z',
+                numpyro.distributions.Categorical(
+                    probs=q_z_p_probs))
+
+    optimizer = numpyro.optim.Adam(step_size=0.0005)
+    svi = numpyro.infer.SVI(model,
+                            guide,
+                            optimizer,
+                            loss=numpyro.infer.Trace_ELBO())
+    svi_result = svi.run(jax.random.PRNGKey(0),
+                         num_steps=num_steps,
+                         obs=docs,
+                         progress_bar=True)
+
+    parameters = dict(
+        topics_word_prob_vectors=np.array(svi_result.params['q_topics_word_prob_vectors_p_alphas']),
+        # mixture_weights=np.array(mix_weights()))
+    )
+
+    table_assignment_posteriors = np.array(svi_result.params['q_z_p_probs'])
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    # import seaborn as sns
+    # fig, axes = plt.subplots(nrows=1, ncols=2)
+    # sns.heatmap(docs, cmap='jet', ax=axes[0])
+    # sns.heatmap(table_assignment_posteriors, cmap='jet', ax=axes[1])
+    # fig.suptitle(f'Num Steps = {num_steps}')
+    # plt.savefig(f'exp_02_mixture_of_unigrams/plots/hmc_gibbs_alpha={alpha}_num_steps={num_steps}.png')
+    # plt.show()
+    # plt.close()
+
+    # returns classes assigned and centroids of corresponding classes
+    stochastic_variational_inference_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=parameters,
+    )
+
+    return stochastic_variational_inference_results
