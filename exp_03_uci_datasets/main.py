@@ -3,9 +3,8 @@ import os
 import sklearn.datasets
 
 from utils.helpers import assert_no_nan_no_inf
-from utils.inference import bayesian_recursion, dp_means_online, dp_means_offline, nuts_sampling, variational_bayes
+from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
-
 
 
 # https://scikit-learn.org/stable/datasets/toy_dataset.html
@@ -15,11 +14,21 @@ def main():
     np.random.seed(1)
 
     dataset_load_functions = {
-        'Iris': sklearn.datasets.load_iris,
+        # 'Iris': sklearn.datasets.load_iris,
         'Diabetes': sklearn.datasets.load_diabetes,
         'Wine': sklearn.datasets.load_wine,
         'Breast Cancer': sklearn.datasets.load_breast_cancer,
-#        'California Housing': sklearn.datasets.fetch_california_housing,
+    }
+
+    # real world datasets
+    # https://scikit-learn.org/stable/datasets/real_world.html#olivetti-faces-dataset
+    dataset_load_functions = {
+        'Olivetti Faces': sklearn.datasets.fetch_olivetti_faces,  # 10 images of 40 distinct subjects, 4096 features
+        'Famous Faces': sklearn.datasets.fetch_lfw_people, # 5749 classes, 13233 samples, dim 5828
+        'Forest Cover': sklearn.datasets.fetch_covtype,  # 54 dimensional features, mixed type
+        'Reuters Dataset': sklearn.datasets.fetch_rcv1,
+        'Anomaly Detection': sklearn.datasets.fetch_kddcup99,  # 41 dimensions,
+        'California Housing': sklearn.datasets.fetch_california_housing
     }
 
     for dataset_str, dataset_load_function in dataset_load_functions.items():
@@ -27,10 +36,7 @@ def main():
         os.makedirs(dataset_plot_dir, exist_ok=True)
         dataset = dataset_load_function(as_frame=True)
         features, targets = dataset.data, dataset.target
-
         print(10)
-
-
 
 
 

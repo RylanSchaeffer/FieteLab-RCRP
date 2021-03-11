@@ -49,7 +49,3 @@ np.mean(predicted == twenty_test.target)
 print(10)
 
 # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
-
-# https://github.com/scikit-learn/scikit-learn/blob/main/doc/tutorial/text_analytics/solutions/exercise_01_language_train_model.py
-
-

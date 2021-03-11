@@ -62,9 +62,15 @@ def run_one_dataset(plot_dir,
         unigram_params=dict(dp_concentration_param=dp_concentration_param,
                             prior_over_topic_parameters=prior_over_topic_parameters))
 
-    variational_bayes_results = run_and_plot_stochastic_variational_inference(
+    svi_5000_steps_results = run_and_plot_stochastic_variational_inference(
         sampled_mou_results=sampled_mou_results,
-        plot_dir=plot_dir)
+        plot_dir=plot_dir,
+        num_steps=5000)
+
+    svi_20000_steps_results = run_and_plot_stochastic_variational_inference(
+        sampled_mou_results=sampled_mou_results,
+        plot_dir=plot_dir,
+        num_steps=20000)
 
     bayesian_recursion_results = run_and_plot_bayesian_recursion(
         sampled_mou_results=sampled_mou_results,
@@ -81,9 +87,11 @@ def run_one_dataset(plot_dir,
         num_samples=20000)
 
     inference_algs_results = {
-        # 'Bayesian Recursion': bayesian_recursion_results,
+        'Bayesian Recursion': bayesian_recursion_results,
         'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
         'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
+        'SVI (5k Steps)': svi_5000_steps_results,
+        'SVI (20k Steps)': svi_20000_steps_results,
     }
     for num_iter in [15, 5, 1]:
         inference_algs_results[f'Expectation Maximization (Num Iter={num_iter})'] = \
