@@ -285,7 +285,7 @@ def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
     os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
     scores_by_alpha = {}
-    alphas = np.arange(0.01, 5.01, 0.1)
+    alphas = np.arange(0.01, 5.01, 0.25)
     for alpha in alphas:
         sampling_hmc_gibbs_results = sampling_hmc_gibbs(
             observations=sampled_mog_results['gaussian_samples_seq'],
