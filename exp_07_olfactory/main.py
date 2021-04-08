@@ -5,7 +5,6 @@ import os
 import pandas as pd
 import seaborn as sns
 
-from utils.helpers import assert_no_nan_no_inf
 from utils.inference_mix_of_bernoullis import bayesian_recursion
 from utils.metrics import score_predicted_clusters
 
@@ -31,16 +30,18 @@ def main():
 
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
-        odors_df = odors_df[index_permutation]
-        features_df = features_df[index_permutation]
+        odors_df = odors_df.iloc[index_permutation]
+        features_df = features_df.iloc[index_permutation]
 
         if os.path.isfile(dataset_results_path):
             # load from disk if exists
             dataset_results = joblib.load(dataset_results_path)
         else:
             # otherwise, generate anew
-            dataset_inference_algs_results, dataset_sampled_mog_results = \
-                run_one_dataset(plot_dir=dataset_dir)
+            dataset_inference_algs_results = run_one_dataset(
+                odors_df=odors_df,
+                features_df=features_df,
+                plot_dir=dataset_dir)
             dataset_results = dict(
                 dataset_inference_algs_results=dataset_inference_algs_results,
                 dataset_sampled_mog_results=dataset_sampled_mog_results,
@@ -62,27 +63,39 @@ def main():
 
 
 def load_olfaction_data():
-
     # TODO: fetch dataset if not in directory
+    # https://bmcneurosci.biomedcentral.com/articles/10.1186/s12868-016-0287-2
+    # https://www.nature.com/articles/s41598-020-73978-1.pdf
     # 55k rows, 38 columns
     olfaction_df = pd.read_csv('exp_07_olfactory/12868_2016_287_MOESM1_ESM_headers_removed.csv')
 
-    odors_df = olfaction_df['C.A.S.'].copy()
+    olfaction_df = olfaction_df.iloc[:1000]
+
     olfaction_cols = olfaction_df.columns.values.tolist()
 
+    # create target series
+    odors_df = olfaction_df[['C.A.S.']].copy()
+    odors_df['C.A.S.'] = pd.factorize(odors_df['C.A.S.'])[0]
+
+    # maybe add odor dilution back in? ['Odor dilution']
     features_df = olfaction_df[olfaction_cols[15:]].copy()
     features_df['CAN OR CAN\'T SMELL'] = olfaction_df['CAN OR CAN\'T SMELL'].replace({
         'I smell something': 100.,
         'I can\'t smell anything': 0.,
-        np.nan: 50.
     })
     features_df['KNOW OR DON\'T KNOW THE SMELL'] = olfaction_df['KNOW OR DON\'T KNOW THE SMELL'].replace({
-        'I don\'t know what the odor is': 0.,
+        'I don\'t know what the odor is': 0.0,
         'I know what the odor is': 100.,
-        np.nan: 50.
     })
-    features_df[olfaction_cols[15:]] = features_df[olfaction_cols[15:]].fillna(value=50)
     features_df /= 100.
+    # replace nans with random normals centered at 0
+    for col in features_df:
+        nan_idx = pd.isna(features_df[col])
+        replacement_vals = np.random.normal(
+            loc=0.5, scale=np.sqrt(0.005), size=nan_idx.sum())
+        replacement_vals[replacement_vals < 0.01] = 0.01
+        replacement_vals[replacement_vals > 0.99] = 0.99
+        features_df.loc[nan_idx, col] = replacement_vals
 
     # features_df.plot.hist(subplots=True, legend=True)
     # for col in features_df:
@@ -97,118 +110,56 @@ def load_olfaction_data():
     return results
 
 
-def run_one_dataset(plot_dir,
-                    num_gaussians: int = 3,
-                    gaussian_cov_scaling: float = 0.3,
-                    gaussian_mean_prior_cov_scaling: float = 6.):
-    # sample data
-    sampled_mog_results = sample_sequence_from_mixture_of_gaussians(
-        seq_len=100,
-        class_sampling='Uniform',
-        alpha=None,
-        num_gaussians=num_gaussians,
-        gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
-                             gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
+def run_one_dataset(features_df,
+                    odors_df,
+                    plot_dir):
 
     bayesian_recursion_results = run_and_plot_bayesian_recursion(
-        sampled_mog_results=sampled_mog_results,
+        features_df=features_df,
+        odors_df=odors_df,
         plot_dir=plot_dir)
 
-    dp_means_offline_results = run_and_plot_dp_means_offline(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    dp_means_online_results = run_and_plot_dp_means_online(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-        num_samples=5000)
-
-    hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-        num_samples=20000)
-
-    variational_bayes_results = run_and_plot_variational_bayes(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
+    # dp_means_offline_results = run_and_plot_dp_means_offline(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # dp_means_online_results = run_and_plot_dp_means_online(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir,
+    #     gaussian_cov_scaling=gaussian_cov_scaling,
+    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+    #     num_samples=5000)
+    #
+    # hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir,
+    #     gaussian_cov_scaling=gaussian_cov_scaling,
+    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+    #     num_samples=20000)
+    #
+    # variational_bayes_results = run_and_plot_variational_bayes(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
 
     inference_algs_results = {
         'Bayesian Recursion': bayesian_recursion_results,
-        'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
-        'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
-        'DP-Means (Online)': dp_means_online_results,
-        'DP-Means (Offline)': dp_means_offline_results,
-        'Variational Bayes': variational_bayes_results,
+        # 'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
+        # 'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
+        # 'DP-Means (Online)': dp_means_online_results,
+        # 'DP-Means (Offline)': dp_means_offline_results,
+        # 'Variational Bayes': variational_bayes_results,
     }
 
     return inference_algs_results, sampled_mog_results
 
 
-def run_and_plot_bayesian_recursion(sampled_mog_results,
+def run_and_plot_bayesian_recursion(features_df,
+                                    odors_df,
                                     plot_dir):
-    def likelihood_fn(observation, parameters):
-        # create new mean for new table, centered at that point
-        parameters['means'] = np.vstack([parameters['means'], observation[np.newaxis, :]])
-        obs_dim = parameters['means'].shape[1]
-        parameters['covs'] = np.vstack([parameters['covs'], np.eye(obs_dim)[np.newaxis, :, :]])
-
-        # calculate likelihood under each cluster mean
-        covariance_determinants = np.linalg.det(parameters['covs'])
-        normalizing_constant = np.sqrt(np.power(2 * np.pi, obs_dim) * covariance_determinants)
-        # shape (num gaussians, dim of gaussians)
-        diff = (observation - parameters['means'])
-        quadratic = np.einsum(
-            'bi, bij, bj->b',
-            diff,
-            np.linalg.inv(parameters['covs']),
-            diff
-        )
-        likelihoods = np.exp(-0.5 * quadratic) / normalizing_constant
-        assert np.all(~np.isnan(likelihoods))
-
-        return likelihoods, parameters
-
-    def update_parameters_fn(observation,
-                             table_assignment_posteriors_running_sum,
-                             table_assignment_posterior,
-                             parameters):
-        # the strategy here is to update parameters as a moving average, but instead of dividing
-        # by the number of points assigned to each cluster, we divide by the total probability
-        # mass assigned to each cluster
-
-        # create a copy of observation for each possible cluster
-        stacked_observation = np.repeat(observation[np.newaxis, :],
-                                        repeats=len(table_assignment_posteriors_running_sum),
-                                        axis=0)
-
-        # compute online average of clusters' means
-        # instead of typical dynamics:
-        #       m_k <- m_k + (obs - m_k) / number of obs assigned to kth cluster
-        # we use the new dynamics
-        #       m_k <- m_k + posterior(obs belongs to kth cluster) * (obs - m_k) / total mass on kth cluster
-        # floating point errors are common here!
-        prefactor = np.divide(table_assignment_posterior,
-                              table_assignment_posteriors_running_sum)
-        prefactor[np.isnan(prefactor)] = 0.
-        assert_no_nan_no_inf(prefactor)
-
-        diff = stacked_observation - parameters['means']
-        assert_no_nan_no_inf(diff)
-        means_updates = np.multiply(
-            prefactor[:, np.newaxis],
-            diff)
-        parameters['means'] += means_updates
-        assert_no_nan_no_inf(parameters['means'])
-
-        return parameters
 
     alphas = 0.01 + np.arange(0., 50.01, 1.)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
@@ -217,14 +168,12 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
     scores_by_alpha = {}
     for alpha in alphas:
         bayesian_recursion_results = bayesian_recursion(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            alpha=alpha,
-            likelihood_fn=likelihood_fn,
-            update_parameters_fn=update_parameters_fn)
+            observations=features_df.values,
+            alpha=alpha)
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            true_cluster_labels=odors_df['C.A.S.'].values,
             table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
         scores_by_alpha[alpha] = scores
 
