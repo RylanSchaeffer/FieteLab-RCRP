@@ -7,4 +7,4 @@
 #SBATCH --mail-type=FAIL
 
 export PYTHONPATH=.
-python -u exp_06_ibp_prior/main.py        # -u flushes output buffer immediately
+python -u exp_07_olfaction/main.py        # -u flushes output buffer immediately

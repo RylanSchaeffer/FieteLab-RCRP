@@ -7,7 +7,7 @@ import numpyro.infer
 import numpyro.distributions
 import numpyro.distributions.constraints
 
-from utils.helpers import assert_no_nan_no_inf
+from utils.helpers import assert_numpy_no_nan_no_inf
 
 
 def bayesian_recursion(docs,

@@ -5,7 +5,7 @@ import pandas as pd
 from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
-from utils.helpers import assert_no_nan_no_inf
+from utils.helpers import assert_numpy_no_nan_no_inf
 from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, \
     sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
@@ -16,7 +16,7 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
-    num_datasets = 30
+    num_datasets = 5
     inference_algs_results_by_dataset = {}
     sampled_mog_results_by_dataset = {}
     # generate lots of datasets and record performance
@@ -152,15 +152,15 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
         prefactor = np.divide(table_assignment_posterior,
                               table_assignment_posteriors_running_sum)
         prefactor[np.isnan(prefactor)] = 0.
-        assert_no_nan_no_inf(prefactor)
+        assert_numpy_no_nan_no_inf(prefactor)
 
         diff = stacked_observation - parameters['means']
-        assert_no_nan_no_inf(diff)
+        assert_numpy_no_nan_no_inf(diff)
         means_updates = np.multiply(
             prefactor[:, np.newaxis],
             diff)
         parameters['means'] += means_updates
-        assert_no_nan_no_inf(parameters['means'])
+        assert_numpy_no_nan_no_inf(parameters['means'])
 
         return parameters
 

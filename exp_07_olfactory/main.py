@@ -69,7 +69,7 @@ def load_olfaction_data():
     # 55k rows, 38 columns
     olfaction_df = pd.read_csv('exp_07_olfactory/12868_2016_287_MOESM1_ESM_headers_removed.csv')
 
-    olfaction_df = olfaction_df.iloc[:1000]
+    olfaction_df = olfaction_df.iloc[:100]
 
     olfaction_cols = olfaction_df.columns.values.tolist()
 
@@ -173,7 +173,7 @@ def run_and_plot_bayesian_recursion(features_df,
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=odors_df['C.A.S.'].values,
+            true_cluster_labels=odors_df['C.A.S.'],
             table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
         scores_by_alpha[alpha] = scores
 
