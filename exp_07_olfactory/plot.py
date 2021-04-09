@@ -120,15 +120,13 @@ def plot_inference_algs_comparison(features_df,
 def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inference_alg: dict,
                                               plot_dir: str,
                                               num_clusters: int):
-    for inference_alg, inference_alg_num_clusters_df in num_clusters_by_dataset_by_inference_alg.items():
-        # TODO: readd error bars, but keeping semilogy
-
+    for inference_alg_str, inference_alg_num_clusters_df in num_clusters_by_dataset_by_inference_alg.items():
         means = inference_alg_num_clusters_df.mean()
         sems = inference_alg_num_clusters_df.sem()
 
         plt.plot(inference_alg_num_clusters_df.columns.values,  # concentration parameters
                  means,
-                 label=inference_alg)
+                 label=inference_alg_str)
 
         plt.fill_between(
             x=inference_alg_num_clusters_df.columns.values,
@@ -139,7 +137,7 @@ def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inferen
 
     plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
     plt.ylabel('Number of Clusters')
-    # plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
+    plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
     plt.gca().set_ylim(bottom=1.0)
     plt.gca().set_xlim(left=0.000001)
     plt.legend()
@@ -149,3 +147,35 @@ def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inferen
                 dpi=300)
     # plt.show()
     plt.close()
+
+
+def plot_inference_algs_scores_by_param(scores_by_dataset_by_inference_alg_by_scoring_metric: dict,
+                                        plot_dir: str):
+
+    # for each scoring function, plot score (y) vs parameter (x)
+    for scoring_metric, scores_by_dataset_by_inference_alg in scores_by_dataset_by_inference_alg_by_scoring_metric.items():
+        for inference_alg_str, inference_algs_scores_df in scores_by_dataset_by_inference_alg.items():
+            means = inference_algs_scores_df.mean()
+            sems = inference_algs_scores_df.sem()
+
+            plt.plot(inference_algs_scores_df.columns.values,  # concentration parameters
+                     means,
+                     label=inference_alg_str)
+
+            plt.fill_between(
+                x=inference_algs_scores_df.columns.values,
+                y1=means - sems,
+                y2=means + sems,
+                alpha=0.3,
+                linewidth=0, )
+
+        plt.legend()
+        plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
+        plt.ylabel(scoring_metric)
+        plt.ylim(0., 1.)
+        plt.gca().set_xlim(left=0)
+        plt.savefig(os.path.join(plot_dir, f'comparison_score={scoring_metric}.png'),
+                    bbox_inches='tight',
+                    dpi=300)
+        # plt.show()
+        plt.close()
