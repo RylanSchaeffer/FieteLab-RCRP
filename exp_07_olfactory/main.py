@@ -5,6 +5,8 @@ import os
 import pandas as pd
 import seaborn as sns
 
+from exp_07_olfactory.plot import *
+
 from utils.inference_mix_of_bernoullis import bayesian_recursion
 from utils.metrics import score_predicted_clusters
 
@@ -44,12 +46,11 @@ def main():
                 plot_dir=dataset_dir)
             dataset_results = dict(
                 dataset_inference_algs_results=dataset_inference_algs_results,
-                dataset_sampled_mog_results=dataset_sampled_mog_results,
             )
             joblib.dump(dataset_results, dataset_results_path)
 
             # delete variables from memory and perform fresh read from disk
-            del dataset_inference_algs_results, dataset_sampled_mog_results
+            del dataset_inference_algs_results
             del dataset_results
             dataset_results = joblib.load(dataset_results_path)
 
@@ -75,7 +76,7 @@ def load_olfaction_data():
 
     # create target series
     odors_df = olfaction_df[['C.A.S.']].copy()
-    odors_df['C.A.S.'] = pd.factorize(odors_df['C.A.S.'])[0]
+    # odors_df['C.A.S.'] = pd.factorize(odors_df['C.A.S.'])[0]
 
     # maybe add odor dilution back in? ['Odor dilution']
     features_df = olfaction_df[olfaction_cols[15:]].copy()
@@ -89,6 +90,7 @@ def load_olfaction_data():
     })
     features_df /= 100.
     # replace nans with random normals centered at 0
+    # TODO: maybe switch to truncated normal
     for col in features_df:
         nan_idx = pd.isna(features_df[col])
         replacement_vals = np.random.normal(
@@ -154,7 +156,7 @@ def run_one_dataset(features_df,
         # 'Variational Bayes': variational_bayes_results,
     }
 
-    return inference_algs_results, sampled_mog_results
+    return inference_algs_results
 
 
 def run_and_plot_bayesian_recursion(features_df,
@@ -181,7 +183,8 @@ def run_and_plot_bayesian_recursion(features_df,
         num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
 
         plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
+            odors_df=odors_df,
+            features_df=features_df,
             inference_results=bayesian_recursion_results,
             inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
             plot_dir=bayesian_recursion_plot_dir)

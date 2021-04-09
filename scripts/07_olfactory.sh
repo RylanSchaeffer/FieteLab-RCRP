@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -p fiete
 #SBATCH -n 2                    # two cores
-#SBATCH --mem=20G               # RAM
+#SBATCH --mem=32G               # RAM
 #SBATCH --time=99:99:99         # total run time limit (HH:MM:SS)
 #SBATCH --mail-user=rylansch
 #SBATCH --mail-type=FAIL
 
 export PYTHONPATH=.
-python -u exp_07_olfaction/main.py        # -u flushes output buffer immediately
+python -u exp_07_olfactory/main.py        # -u flushes output buffer immediately

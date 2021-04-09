@@ -16,7 +16,7 @@ def bayesian_recursion(observations,
 
     # The inference algorithm does not require recording the full history of priors/posteriors
     # We record the full history for subsequent analysis
-    max_num_latents = int(1.3 * num_obs)
+    max_num_latents = num_obs
     table_assignment_priors = torch.zeros(
         (num_obs, max_num_latents),
         dtype=torch.float32,
