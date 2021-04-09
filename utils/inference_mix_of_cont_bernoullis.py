@@ -59,7 +59,6 @@ def bayesian_recursion(observations,
     for obs_idx, torch_observation in enumerate(torch_observations):
 
         # create new params for possible cluster, centered at that point
-        # += is necessary for the operation to be performed in place
         # data is necessary to not break backprop
         # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
         cluster_logits.data[obs_idx, :] = torch.distributions.utils.probs_to_logits(
@@ -154,19 +153,20 @@ def bayesian_recursion(observations,
             #       p_k <- p_k + (obs - p_k) / number of obs assigned to kth cluster
             # we use the new dynamics
             #       p_k <- p_k + posterior(obs belongs to kth cluster) * (obs - p_k) / total mass on kth cluster
-            # that effectively means the learning rate should be this prefactor
-            prefactor = torch.divide(table_assignment_posterior[obs_idx],
-                                     table_assignment_posteriors_running_sum[obs_idx])
-            prefactor[torch.isnan(prefactor)] = 0.
-            prefactor[torch.isinf(prefactor)] = 0.
+            # that effectively means the learning rate should be this scaled_prefactor
+            scaled_learning_rate = em_learning_rate * torch.divide(
+                table_assignment_posteriors[obs_idx, :],
+                table_assignment_posteriors_running_sum[obs_idx, :])
+            scaled_learning_rate[torch.isnan(scaled_learning_rate)] = 0.
+            scaled_learning_rate[torch.isinf(scaled_learning_rate)] = 0.
 
             # don't update the newest cluster
-            prefactor[obs_idx] = 0.
+            scaled_learning_rate[obs_idx] = 0.
 
             scaled_cluster_logits_grad = torch.multiply(
-                prefactor[:, None],
+                scaled_learning_rate[:, None],
                 cluster_logits.grad)
-            cluster_logits.data += em_learning_rate * scaled_cluster_logits_grad
+            cluster_logits.data += scaled_cluster_logits_grad
 
             # assert torch.all(cluster_logits[:obs_idx+1] >= epsilon)
             # assert torch.all(cluster_logits[:obs_idx+1] <= 1. - epsilon)
@@ -181,5 +181,9 @@ def bayesian_recursion(observations,
             cluster_logits=cluster_logits.detach().numpy(),
             cluster_probs=torch.distributions.utils.logits_to_probs(cluster_logits).detach().numpy()),
     )
+
+    assert np.allclose(
+        np.sum(bayesian_recursion_results['parameters']['cluster_probs'], axis=1),
+        1.)
 
     return bayesian_recursion_results

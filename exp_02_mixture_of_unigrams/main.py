@@ -6,7 +6,7 @@ import scipy.special
 from exp_02_mixture_of_unigrams.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_unigrams
-from utils.helpers import assert_no_nan_no_inf
+from utils.helpers import assert_numpy_no_nan_no_inf
 from utils.inference_mix_of_unigram import bayesian_recursion, expectation_maximization, sampling_hmc_gibbs, \
     stochastic_variational_inference
 from utils.metrics import score_predicted_clusters
@@ -139,9 +139,9 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         log_x_times_beta_terms[np.isnan(log_x_times_beta_terms)] = 0.
         # shape (doc idx, )
         log_denominator = np.sum(log_x_times_beta_terms, axis=1)
-        assert_no_nan_no_inf(log_denominator)
+        assert_numpy_no_nan_no_inf(log_denominator)
         log_like = log_numerator - log_denominator
-        assert_no_nan_no_inf(log_like)
+        assert_numpy_no_nan_no_inf(log_like)
         likelihoods = np.exp(log_like)
 
         # Approach 2: Sampling
@@ -162,7 +162,7 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         # assert np.allclose(np.sum(multinomial_parameters, axis=1), 1)
         # likelihoods = scipy.stats.multinomial.pmf(x=doc, n=np.sum(doc), p=multinomial_parameters)
 
-        assert_no_nan_no_inf(likelihoods)
+        assert_numpy_no_nan_no_inf(likelihoods)
 
         return likelihoods, parameters
 
@@ -175,16 +175,16 @@ def run_and_plot_bayesian_recursion(sampled_mou_results,
         probability_prefactor = np.divide(table_assignment_posterior,
                                           table_assignment_posteriors_running_sum)
         probability_prefactor[np.isnan(probability_prefactor)] = 0.
-        assert_no_nan_no_inf(probability_prefactor)
+        assert_numpy_no_nan_no_inf(probability_prefactor)
 
         inferred_topic_parameters_updates = np.multiply(
             probability_prefactor[:, np.newaxis],
             doc)
         # multiply the last parameter update by 0 so we don't create a point and double count that obs
         inferred_topic_parameters_updates[-1, :] *= 0.
-        assert_no_nan_no_inf(inferred_topic_parameters_updates)
+        assert_numpy_no_nan_no_inf(inferred_topic_parameters_updates)
         parameters['topics_concentrations'] += inferred_topic_parameters_updates
-        assert_no_nan_no_inf(parameters['topics_concentrations'])
+        assert_numpy_no_nan_no_inf(parameters['topics_concentrations'])
 
         return parameters
 

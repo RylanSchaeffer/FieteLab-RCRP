@@ -157,21 +157,25 @@ def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inferen
                                               plot_dir: str,
                                               num_clusters: int):
     for inference_alg, inference_alg_num_clusters_df in num_clusters_by_dataset_by_inference_alg.items():
-        # TODO: readd error bars, but keeping semilogy
-
-        plt.semilogy(inference_alg_num_clusters_df.columns.values,  # concentration parameters
-                     inference_alg_num_clusters_df.mean(),
-                     # yerr=inference_alg_num_clusters_df.sem(),
-                     label=inference_alg)
+        means = inference_alg_num_clusters_df.mean()
+        sems = inference_alg_num_clusters_df.sem()
+        plt.plot(inference_alg_num_clusters_df.columns.values,  # concentration parameters
+                 means,
+                 label=inference_alg)
+        plt.fill_between(
+            x=inference_alg_num_clusters_df.columns.values,
+            y1=means - sems,
+            y2=means + sems,
+            alpha=0.3,
+            linewidth=0)
 
     plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
     plt.ylabel('Number of Clusters')
     plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
-    plt.gca().set_ylim(bottom=0)
+    plt.gca().set_ylim(bottom=1.)
     plt.gca().set_xlim(left=0)
     plt.legend()
-    # plt.ylim(0, 5)
-    # plt.yscale('log')
+    plt.yscale('log')
     plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
                 bbox_inches='tight',
                 dpi=300)

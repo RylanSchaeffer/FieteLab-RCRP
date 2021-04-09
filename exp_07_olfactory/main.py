@@ -7,7 +7,7 @@ import seaborn as sns
 
 from exp_07_olfactory.plot import *
 
-from utils.inference_mix_of_bernoullis import bayesian_recursion
+from utils.inference_mix_of_cont_bernoullis import bayesian_recursion
 from utils.metrics import score_predicted_clusters
 
 
@@ -23,15 +23,16 @@ def main():
 
     num_permutations = 5
     inference_algs_results_by_dataset = {}
-    sampled_mog_results_by_dataset = {}
+    sampled_permutation_indices_by_dataset = {}
 
-    for permutation_idx in range(num_permutations):
+    for dataset_idx in range(num_permutations):
 
-        dataset_dir = os.path.join(plot_dir, f'dataset={permutation_idx}')
+        dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
         dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
 
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
+        sampled_permutation_indices_by_dataset[dataset_idx] = index_permutation
         odors_df = odors_df.iloc[index_permutation]
         features_df = features_df.iloc[index_permutation]
 
@@ -54,13 +55,14 @@ def main():
             del dataset_results
             dataset_results = joblib.load(dataset_results_path)
 
-        inference_algs_results_by_dataset[permutation_idx] = dataset_results['dataset_inference_algs_results']
-        sampled_mog_results_by_dataset[permutation_idx] = dataset_results['dataset_sampled_mog_results']
+        inference_algs_results_by_dataset[dataset_idx] = dataset_results['dataset_inference_algs_results']
 
     plot_inference_algs_comparison(
+        features_df=features_df,
+        odors_df=odors_df,
         plot_dir=plot_dir,
         inference_algs_results_by_dataset=inference_algs_results_by_dataset,
-        sampled_mog_results_by_dataset=sampled_mog_results_by_dataset)
+        sampled_permutation_indices_by_dataset=sampled_permutation_indices_by_dataset)
 
 
 def load_olfaction_data():
