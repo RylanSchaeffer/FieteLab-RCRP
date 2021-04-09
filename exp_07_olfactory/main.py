@@ -64,6 +64,8 @@ def main():
         inference_algs_results_by_dataset=inference_algs_results_by_dataset,
         sampled_permutation_indices_by_dataset=sampled_permutation_indices_by_dataset)
 
+    print('Successfully completed Exp 07 Olfactory Clustering')
+
 
 def load_olfaction_data():
     # TODO: fetch dataset if not in directory
@@ -72,7 +74,7 @@ def load_olfaction_data():
     # 55k rows, 38 columns
     olfaction_df = pd.read_csv('exp_07_olfactory/12868_2016_287_MOESM1_ESM_headers_removed.csv')
 
-    olfaction_df = olfaction_df.iloc[:100]
+    olfaction_df = olfaction_df.iloc[:1000]
 
     olfaction_cols = olfaction_df.columns.values.tolist()
 
@@ -165,7 +167,7 @@ def run_and_plot_bayesian_recursion(features_df,
                                     odors_df,
                                     plot_dir):
 
-    alphas = 0.01 + np.arange(0., 50.01, 1.)
+    alphas = 0.01 + np.arange(0., 150.01, 15)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
