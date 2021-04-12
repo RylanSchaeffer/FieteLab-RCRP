@@ -7,7 +7,6 @@ import scipy.special
 import scipy.stats
 import seaborn as sns
 
-
 alphas_color_map = {
     1.1: 'tab:blue',
     10.78: 'tab:orange',
@@ -62,14 +61,15 @@ def plot_analytics_vs_monte_carlo_customer_tables(sampled_customer_tables_by_alp
 
         # replace 0s with nans to allow for log scaling
         average_customer_tables[average_customer_tables == 0.] = np.nan
-        analytical_customer_tables[analytical_customer_tables < np.nanmin(average_customer_tables)] = np.nan
+        cutoff = np.nanmin(average_customer_tables)
+        analytical_customer_tables[analytical_customer_tables < cutoff] = np.nan
 
         ax = axes[0]
         sns.heatmap(average_customer_tables,
                     ax=ax,
                     mask=np.isnan(average_customer_tables),
                     cmap='jet',
-                    norm=LogNorm(),
+                    norm=LogNorm(vmin=cutoff, vmax=1., ),
                     )
 
         ax.set_title(rf'Monte Carlo Estimate ($\alpha$={alpha})')
@@ -82,14 +82,17 @@ def plot_analytics_vs_monte_carlo_customer_tables(sampled_customer_tables_by_alp
                     ax=ax,
                     mask=np.isnan(analytical_customer_tables),
                     cmap='jet',
-                    norm=LogNorm())
+                    norm=LogNorm(vmin=cutoff,
+                                 vmax=1., ),
+                    )
         ax.set_title(rf'Analytical Prediction ($\alpha$={alpha})')
         ax.set_xlabel(r'Table Index')
 
-        plt.savefig(os.path.join(plot_dir, f'analytics_vs_monte_carlo_customer_tables={alpha}.png'),
+        # for some reason, on OpenMind, colorbar ticks disappear without calling plt.show() first
+        # plt.show()
+        fig.savefig(os.path.join(plot_dir, f'analytics_vs_monte_carlo_customer_tables={alpha}.png'),
                     bbox_inches='tight',
                     dpi=300)
-        # plt.show()
         plt.close()
 
 
@@ -158,8 +161,7 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
             cbar_kws=dict(label=r'$\sum_{t^{\prime} = 1}^{t-1} p(z_{t\prime} = k)$'),
             cmap='jet',
             mask=np.isnan(cum_customer_seating_probs[:, :max_table_idx]),
-            norm=LogNorm(),
-            vmin=cutoff,
+            norm=LogNorm(vmin=cutoff),
         )
         ax.set_xlabel('Table Index')
         ax.set_ylabel('Customer Index')
@@ -179,8 +181,7 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
             cbar_kws=dict(label='$p(K_t = k)$'),
             cmap='jet',
             mask=np.isnan(table_distributions_by_T_array[:, :max_table_idx]),
-            norm=LogNorm(),
-            vmin=cutoff,
+            norm=LogNorm(vmin=cutoff, ),
         )
         ax.set_title('Distribution over\nNumber of Non-Empty Tables')
         ax.set_xlabel('Table Index')
@@ -196,8 +197,7 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
             cbar_kws=dict(label='$p(z_t)$'),
             cmap='jet',
             mask=np.isnan(analytical_customer_tables[:, :max_table_idx]),
-            norm=LogNorm(),
-            vmin=cutoff,
+            norm=LogNorm(vmin=cutoff, ),
         )
         ax.set_title('New Customer\'s Distribution')
         ax.set_xlabel('Table Index')
@@ -211,7 +211,6 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
 def plot_analytical_vs_monte_carlo_mse(sampled_customer_tables_by_alpha_by_rep,
                                        analytical_customer_tables_by_alpha,
                                        plot_dir):
-
     alphas = list(sampled_customer_tables_by_alpha_by_rep.keys())
     num_reps = len(sampled_customer_tables_by_alpha_by_rep[alphas[0]])
 
