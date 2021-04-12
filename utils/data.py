@@ -64,7 +64,7 @@ def sample_sequence_from_crp(T: int,
                              alpha: float):
     assert alpha > 0
     table_occupancies = np.zeros(shape=T, dtype=np.int)
-    sampled_tables = np.zeros(shape=T, dtype=np.int)
+    customer_tables = np.zeros(shape=T, dtype=np.int)
 
     # the first customer always goes at the first table
     table_occupancies[0] = 1
@@ -75,13 +75,18 @@ def sample_sequence_from_crp(T: int,
         freq[max_k] = alpha
         probs = freq / np.sum(freq)
         z_t = np.random.choice(np.arange(max_k + 1), p=probs[:max_k + 1])
-        sampled_tables[t] = z_t
+        customer_tables[t] = z_t
         table_occupancies[z_t] += 1
-    return table_occupancies, sampled_tables
+
+    customer_tables_one_hot = np.zeros(shape=(customer_tables.shape[0], customer_tables.shape[0]))
+    customer_tables_one_hot[np.arange(customer_tables.shape[0]), customer_tables] = 1
+
+    return table_occupancies, customer_tables, customer_tables_one_hot
 
 
-vectorized_sample_sequence_from_crp = np.vectorize(sample_sequence_from_crp,
-                                                   otypes=[np.ndarray, np.ndarray])
+vectorized_sample_sequence_from_crp = np.vectorize(
+    sample_sequence_from_crp,
+    otypes=[np.ndarray, np.ndarray, np.ndarray])
 
 
 def sample_sequence_from_ibp(T: int,
