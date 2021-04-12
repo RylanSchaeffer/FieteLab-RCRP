@@ -34,27 +34,27 @@ def main():
         alphas=alphas,
         exp_dir=exp_dir)
 
-    # plot_chinese_restaurant_table_dist_by_customer_num(
-    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-    #     plot_dir=plot_dir)
-    #
-    # plot_recursion_visualization(
-    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-    #     # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-    #     plot_dir=plot_dir)
-    #
-    # plot_analytics_vs_monte_carlo_table_occupancies(
-    #     sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
-    #     analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-    #     plot_dir=plot_dir)
-    #
-    # plot_analytics_vs_monte_carlo_customer_tables(
-    #     sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
-    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-    #     plot_dir=plot_dir)
+    plot_chinese_restaurant_table_dist_by_customer_num(
+        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+        plot_dir=plot_dir)
 
-    num_reps = 2
+    plot_recursion_visualization(
+        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+        # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+        plot_dir=plot_dir)
+
+    plot_analytics_vs_monte_carlo_table_occupancies(
+        sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
+        analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+        plot_dir=plot_dir)
+
+    plot_analytics_vs_monte_carlo_customer_tables(
+        sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
+        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        plot_dir=plot_dir)
+
+    num_reps = 5
     sampled_customer_tables_by_alpha_by_rep = {}
     for alpha in alphas:
         sampled_customer_tables_by_alpha_by_rep[alpha] = []
