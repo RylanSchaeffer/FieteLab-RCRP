@@ -7,6 +7,7 @@ def score_predicted_clusters(table_assignment_posteriors, true_cluster_labels):
     # table assignment posteriors is square matrix
     # first dimension is num obs, second dimension is number clusters
     # (i, j) element is probability the ith observation belongs to jth cluster
+    # true_cluster_labels: integer classes with shape (num obs, )
 
     pred_cluster_labels = np.argmax(table_assignment_posteriors,
                                     axis=1)

@@ -1,0 +1,161 @@
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import numpy as np
+import os
+import pandas as pd
+import seaborn as sns
+
+
+def plot_inference_results(images,
+                           labels,
+                           inference_results: dict,
+                           inference_alg: str,
+                           plot_dir):
+
+    one_hot_labels = pd.get_dummies(labels)
+
+    # sort dummies by order of class in dataset
+    _, order_of_appearance = np.unique(labels, return_index=True)
+    idx_order_of_appearance = np.argsort(order_of_appearance)
+    one_hot_labels = one_hot_labels[one_hot_labels.columns[idx_order_of_appearance]]
+
+    fig, axes = plt.subplots(nrows=1,
+                             ncols=2,
+                             figsize=(8, 5))
+
+    ax = axes[0]
+    sns.heatmap(data=one_hot_labels.values,
+                ax=ax,
+                mask=one_hot_labels.values == 0.,
+                cmap='jet',
+                cbar=False)
+    ax.set_ylabel('Observation #')
+    ax.set_xlabel('True Class')
+
+    # plot predicted classes
+    ax = axes[1]
+    pred_labels = np.copy(inference_results['table_assignment_posteriors'])
+    cutoff = 1e-6
+    pred_labels[pred_labels < cutoff] = np.nan
+    sns.heatmap(data=pred_labels,
+                ax=ax,
+                mask=np.isnan(pred_labels),
+                # yticklabels=False,
+                cmap='jet',
+                norm=LogNorm(vmax=1.),
+                )
+
+    ax.set_xlabel('Pred Class')
+    # ax.set_title(r'$p(z_t=k|x_{<t})$')
+
+    plt.show()
+    print(10)
+
+
+def plot_inference_algs_comparison(images,
+                                   labels,
+                                   inference_algs_results_by_dataset: dict,
+                                   sampled_permutation_indices_by_dataset: dict,
+                                   plot_dir: str):
+
+    num_datasets = len(inference_algs_results_by_dataset)
+    num_clusters = len(np.unique(labels))
+
+    inference_algs = list(inference_algs_results_by_dataset[0].keys())
+    scoring_metrics = inference_algs_results_by_dataset[0][inference_algs[0]]['scores_by_param'].columns.values
+
+    # we have four dimensions of interest: inference_alg, dataset idx, scoring metric, concentration parameter
+
+    # construct dictionary mapping from inference alg to dataframe
+    # with dataset idx as rows and concentration parameters as columns
+    # {inference alg: DataFrame(number of clusters)}
+    num_clusters_by_dataset_by_inference_alg = {}
+    for inference_alg in inference_algs:
+        num_clusters_by_dataset_by_inference_alg[inference_alg] = pd.DataFrame([
+            inference_algs_results_by_dataset[dataset_idx][inference_alg]['num_clusters_by_param']
+            for dataset_idx in range(num_datasets)])
+
+    plot_inference_algs_num_clusters_by_param(
+        num_clusters_by_dataset_by_inference_alg=num_clusters_by_dataset_by_inference_alg,
+        plot_dir=plot_dir,
+        num_clusters=num_clusters)
+
+    # construct dictionary mapping from scoring metric to inference alg
+    # to dataframe with dataset idx as rows and concentration parameters as columns
+    # {scoring metric: {inference alg: DataFrame(scores)}}
+    scores_by_dataset_by_inference_alg_by_scoring_metric = {}
+    for scoring_metric in scoring_metrics:
+        scores_by_dataset_by_inference_alg_by_scoring_metric[scoring_metric] = {}
+        for inference_alg in inference_algs:
+            scores_by_dataset_by_inference_alg_by_scoring_metric[scoring_metric][inference_alg] = \
+                pd.DataFrame(
+                    [inference_algs_results_by_dataset[dataset_idx][inference_alg]['scores_by_param'][scoring_metric]
+                     for dataset_idx in range(num_datasets)])
+
+    plot_inference_algs_scores_by_param(
+        scores_by_dataset_by_inference_alg_by_scoring_metric=scores_by_dataset_by_inference_alg_by_scoring_metric,
+        plot_dir=plot_dir)
+
+
+def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inference_alg: dict,
+                                              plot_dir: str,
+                                              num_clusters: int):
+    for inference_alg_str, inference_alg_num_clusters_df in num_clusters_by_dataset_by_inference_alg.items():
+        means = inference_alg_num_clusters_df.mean()
+        sems = inference_alg_num_clusters_df.sem()
+
+        plt.plot(inference_alg_num_clusters_df.columns.values,  # concentration parameters
+                 means,
+                 label=inference_alg_str)
+
+        plt.fill_between(
+            x=inference_alg_num_clusters_df.columns.values,
+            y1=means - sems,
+            y2=means + sems,
+            alpha=0.3,
+            linewidth=0, )
+
+    plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
+    plt.ylabel('Number of Clusters')
+    plt.axhline(num_clusters, label='Correct Number Clusters', linestyle='--', color='k')
+    plt.gca().set_ylim(bottom=1.0)
+    plt.gca().set_xlim(left=0.000001)
+    plt.legend()
+    plt.yscale('log')
+    plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+
+def plot_inference_algs_scores_by_param(scores_by_dataset_by_inference_alg_by_scoring_metric: dict,
+                                        plot_dir: str):
+
+    # for each scoring function, plot score (y) vs parameter (x)
+    for scoring_metric, scores_by_dataset_by_inference_alg in scores_by_dataset_by_inference_alg_by_scoring_metric.items():
+        for inference_alg_str, inference_algs_scores_df in scores_by_dataset_by_inference_alg.items():
+            means = inference_algs_scores_df.mean()
+            sems = inference_algs_scores_df.sem()
+
+            plt.plot(inference_algs_scores_df.columns.values,  # concentration parameters
+                     means,
+                     label=inference_alg_str)
+
+            plt.fill_between(
+                x=inference_algs_scores_df.columns.values,
+                y1=means - sems,
+                y2=means + sems,
+                alpha=0.3,
+                linewidth=0, )
+
+        plt.legend()
+        plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
+        plt.ylabel(scoring_metric)
+        plt.ylim(0., 1.)
+        plt.gca().set_xlim(left=0)
+        plt.savefig(os.path.join(plot_dir, f'comparison_score={scoring_metric}.png'),
+                    bbox_inches='tight',
+                    dpi=300)
+        # plt.show()
+        plt.close()
