@@ -217,17 +217,17 @@ def plot_analytical_vs_monte_carlo_mse(means_per_num_samples_per_alpha,
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 4))
     for alpha in alphas:
-        ax.errorbar(x=means_per_num_samples_per_alpha[alpha].keys(),
-                    y=means_per_num_samples_per_alpha[alpha].values(),
-                    yerr=sems_per_num_samples_per_alpha[alpha].values(),
+        ax.errorbar(x=list(means_per_num_samples_per_alpha[alpha].keys()),
+                    y=list(means_per_num_samples_per_alpha[alpha].values()),
+                    yerr=list(sems_per_num_samples_per_alpha[alpha].values()),
                     label=rf'$\alpha$={alpha}',
                     c=alphas_color_map[alpha])
     ax.legend(title=f'Num Repeats: {num_reps}')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_ylabel(r'$(Analytic - Empiric)^2$')
+    ax.set_ylabel(r'$(Analytic - Monte Carlo Estimate)^2$')
     # ax.set_ylabel(r'$\mathbb{E}_D[\sum_k (\mathbb{E}[N_{T, k}] - \frac{1}{S} \sum_{s=1}^S N_{T, k}^{(s)})^2]$')
-    ax.set_xlabel('Number of Samples')
+    ax.set_xlabel('Number of Monte Carlo Samples')
     fig.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
                 bbox_inches='tight',
                 dpi=300)

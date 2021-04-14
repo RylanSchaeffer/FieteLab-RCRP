@@ -18,7 +18,7 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
 
     T = 50  # max time
-    num_samples = 5000  # number of samples to draw from CRP(alpha)
+    num_samples = 10000  # number of samples to draw from CRP(alpha)
     alphas = [1.1, 10.78, 15.37, 30.91]
 
     sampled_table_occupancies_by_alpha, sampled_customer_tables_by_alpha = sample_from_crp(
@@ -54,14 +54,14 @@ def main():
     #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
     #     plot_dir=plot_dir)
 
-    num_reps = 5
+    num_reps = 10
     means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = \
         calc_analytical_vs_monte_carlo_mse(
             T=T,
             alphas=alphas,
             exp_dir=exp_dir,
             num_reps=num_reps,
-            num_samples=num_samples,
+            sample_subset_size=num_samples,
             analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha)
 
     plot_analytical_vs_monte_carlo_mse(
@@ -120,37 +120,41 @@ def calc_analytical_vs_monte_carlo_mse(T: int,
                                        alphas,
                                        exp_dir,
                                        num_reps: int,
-                                       num_samples: int,
+                                       sample_subset_size: int,
                                        analytical_customer_tables_by_alpha):
 
-    possible_num_samples = np.logspace(1, np.log10(num_samples), 4).astype(np.int)
-    assert num_samples >= np.max(possible_num_samples)
-    means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = {}, {}
-    for alpha in alphas:
-        means_per_num_samples_per_alpha[alpha] = {}
-        sems_per_num_samples_per_alpha[alpha] = {}
-        for rep_idx in range(num_reps):
-            # draw sample from CRP
-            _, sampled_customer_tables = sample_from_crp(
-                T=T,
-                alphas=alphas,
-                exp_dir=exp_dir,
-                num_samples=num_samples,
-                rep_idx=rep_idx)
+    sample_subset_sizes = np.logspace(1, 4, 5).astype(np.int)
 
-            # for each number of subsets, calculate the error
-            for num_samples in possible_num_samples:
-                rep_errors = []
-                for rep_idx in range(num_reps):
-                    rep_error = np.square(np.linalg.norm(
-                        np.subtract(
-                            np.mean(sampled_customer_tables[:num_samples],
-                                    axis=0),
-                            analytical_customer_tables_by_alpha[alpha])
-                    ))
-                    rep_errors.append(rep_error)
-                means_per_num_samples_per_alpha[alpha][num_samples] = np.mean(rep_errors)
-                sems_per_num_samples_per_alpha[alpha][num_samples] = scipy.stats.sem(rep_errors)
+    rep_errors = np.zeros(shape=(num_reps, len(alphas), len(sample_subset_sizes)))
+
+    for rep_idx in range(num_reps):
+        # draw sample from CRP
+        _, sampled_customer_tables_by_alpha = sample_from_crp(
+            T=T,
+            alphas=alphas,
+            exp_dir=exp_dir,
+            num_samples=sample_subset_size,
+            rep_idx=rep_idx)
+
+        for alpha_idx, alpha in enumerate(alphas):
+            # for each subset of data, calculate the error
+            for sample_idx, sample_subset_size in enumerate(sample_subset_sizes):
+                rep_error = np.square(np.linalg.norm(
+                    np.subtract(
+                        np.mean(sampled_customer_tables_by_alpha[alpha][:sample_subset_size],
+                                axis=0),
+                        analytical_customer_tables_by_alpha[alpha])
+                ))
+                rep_errors[rep_idx, alpha_idx, sample_idx] = rep_error
+
+    means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = {}, {}
+    for alpha_idx, alpha in enumerate(alphas):
+        means_per_num_samples_per_alpha[alpha] = {
+            num_sample: error for num_sample, error in
+            zip(sample_subset_sizes, np.mean(rep_errors[:, alpha_idx, :], axis=0))}
+        sems_per_num_samples_per_alpha[alpha] = {
+            num_sample: error for num_sample, error in
+            zip(sample_subset_sizes, scipy.stats.sem(rep_errors[:, alpha_idx, :], axis=0))}
 
     return means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha
 
