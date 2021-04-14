@@ -41,7 +41,7 @@ def plot_chinese_restaurant_table_dist_by_customer_num(analytical_table_distribu
         plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
         plt.xlabel(r'Number of Tables after T Customers')
         plt.ylabel(r'P(Number of Tables after T Customers)')
-        plt.savefig(os.path.join(plot_dir, f'crt_table_distribution_alpha={alpha}.png'),
+        fig.savefig(os.path.join(plot_dir, f'crt_table_distribution_alpha={alpha}.png'),
                     bbox_inches='tight',
                     dpi=300)
         # plt.show()
@@ -130,7 +130,7 @@ def plot_analytics_vs_monte_carlo_table_occupancies(sampled_table_occupancies_by
         axes[ax_idx].set_ylabel('Table Occupancy')
         axes[ax_idx].set_xlim(1, table_cutoff)
 
-    plt.savefig(os.path.join(plot_dir, f'analytics_vs_monte_carlo_table_occupancies.png'),
+    fig.savefig(os.path.join(plot_dir, f'analytics_vs_monte_carlo_table_occupancies.png'),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()
@@ -201,40 +201,25 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
         )
         ax.set_title('New Customer\'s Distribution')
         ax.set_xlabel('Table Index')
-        plt.savefig(os.path.join(plot_dir, f'crp_recursion_alpha={alpha}.png'),
+        fig.savefig(os.path.join(plot_dir, f'crp_recursion_alpha={alpha}.png'),
                     bbox_inches='tight',
                     dpi=300)
         # plt.show()
         plt.close()
 
 
-def plot_analytical_vs_monte_carlo_mse(sampled_customer_tables_by_alpha_by_rep,
-                                       analytical_customer_tables_by_alpha,
+def plot_analytical_vs_monte_carlo_mse(means_per_num_samples_per_alpha,
+                                       sems_per_num_samples_per_alpha,
+                                       num_reps,
                                        plot_dir):
-    alphas = list(sampled_customer_tables_by_alpha_by_rep.keys())
-    num_reps = len(sampled_customer_tables_by_alpha_by_rep[alphas[0]])
 
-    possible_num_samples = np.logspace(1, 4, 4).astype(np.int)
+    alphas = list(sems_per_num_samples_per_alpha.keys())
+
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 4))
-    for alpha_idx, alpha in enumerate(alphas):
-
-        means_per_num_samples, sems_per_num_samples = [], []
-        for num_samples in possible_num_samples:
-            rep_errors = []
-            for rep_idx in range(num_reps):
-                # TODO: refactor double alpha indexing b/c unnecessary
-                rep_error = np.square(np.linalg.norm(
-                    np.subtract(
-                        np.mean(sampled_customer_tables_by_alpha_by_rep[alpha][rep_idx][alpha][:num_samples], axis=0),
-                        analytical_customer_tables_by_alpha[alpha])
-                ))
-                rep_errors.append(rep_error)
-            means_per_num_samples.append(np.mean(rep_errors))
-            sems_per_num_samples.append(scipy.stats.sem(rep_errors))
-
-        ax.errorbar(x=possible_num_samples,
-                    y=means_per_num_samples,
-                    yerr=sems_per_num_samples,
+    for alpha in alphas:
+        ax.errorbar(x=means_per_num_samples_per_alpha[alpha].keys(),
+                    y=means_per_num_samples_per_alpha[alpha].values(),
+                    yerr=sems_per_num_samples_per_alpha[alpha].values(),
                     label=rf'$\alpha$={alpha}',
                     c=alphas_color_map[alpha])
     ax.legend(title=f'Num Repeats: {num_reps}')
@@ -243,7 +228,7 @@ def plot_analytical_vs_monte_carlo_mse(sampled_customer_tables_by_alpha_by_rep,
     ax.set_ylabel(r'$(Analytic - Empiric)^2$')
     # ax.set_ylabel(r'$\mathbb{E}_D[\sum_k (\mathbb{E}[N_{T, k}] - \frac{1}{S} \sum_{s=1}^S N_{T, k}^{(s)})^2]$')
     ax.set_xlabel('Number of Samples')
-    plt.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
+    fig.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()

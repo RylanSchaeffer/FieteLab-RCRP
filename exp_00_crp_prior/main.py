@@ -34,42 +34,40 @@ def main():
         alphas=alphas,
         exp_dir=exp_dir)
 
-    plot_chinese_restaurant_table_dist_by_customer_num(
-        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-        plot_dir=plot_dir)
-
-    plot_recursion_visualization(
-        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-        # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-        plot_dir=plot_dir)
-
-    plot_analytics_vs_monte_carlo_table_occupancies(
-        sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
-        analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-        plot_dir=plot_dir)
-
-    plot_analytics_vs_monte_carlo_customer_tables(
-        sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
-        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-        plot_dir=plot_dir)
+    # plot_chinese_restaurant_table_dist_by_customer_num(
+    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+    #     plot_dir=plot_dir)
+    # 
+    # plot_recursion_visualization(
+    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+    #     # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+    #     plot_dir=plot_dir)
+    # 
+    # plot_analytics_vs_monte_carlo_table_occupancies(
+    #     sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
+    #     analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+    #     plot_dir=plot_dir)
+    # 
+    # plot_analytics_vs_monte_carlo_customer_tables(
+    #     sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
+    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+    #     plot_dir=plot_dir)
 
     num_reps = 5
-    sampled_customer_tables_by_alpha_by_rep = {}
-    for alpha in alphas:
-        sampled_customer_tables_by_alpha_by_rep[alpha] = []
-        for rep_idx in range(num_reps):
-            _, sampled_customer_tables = sample_from_crp(
-                T=T,
-                alphas=alphas,
-                exp_dir=exp_dir,
-                num_samples=num_samples,
-                rep_idx=rep_idx)
-            sampled_customer_tables_by_alpha_by_rep[alpha].append(sampled_customer_tables)
+    means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = \
+        calc_analytical_vs_monte_carlo_mse(
+            T=T,
+            alphas=alphas,
+            exp_dir=exp_dir,
+            num_reps=num_reps,
+            num_samples=num_samples,
+            analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha)
 
     plot_analytical_vs_monte_carlo_mse(
-        sampled_customer_tables_by_alpha_by_rep=sampled_customer_tables_by_alpha_by_rep,
-        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        means_per_num_samples_per_alpha=means_per_num_samples_per_alpha,
+        sems_per_num_samples_per_alpha=sems_per_num_samples_per_alpha,
+        num_reps=num_reps,
         plot_dir=plot_dir)
 
 
@@ -89,7 +87,6 @@ def sample_from_crp(T,
                     exp_dir,
                     num_samples,
                     rep_idx=0):
-
     # generate Monte Carlo samples from the CRP
     sampled_table_occupancies_by_alpha = {}
     sampled_customer_tables_by_alpha = {}
@@ -117,6 +114,45 @@ def sample_from_crp(T,
         sampled_customer_tables_by_alpha[alpha] = customer_tables_one_hot
 
     return sampled_table_occupancies_by_alpha, sampled_customer_tables_by_alpha
+
+
+def calc_analytical_vs_monte_carlo_mse(T: int,
+                                       alphas,
+                                       exp_dir,
+                                       num_reps: int,
+                                       num_samples: int,
+                                       analytical_customer_tables_by_alpha):
+
+    possible_num_samples = np.logspace(1, np.log10(num_samples), 4).astype(np.int)
+    assert num_samples >= np.max(possible_num_samples)
+    means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = {}, {}
+    for alpha in alphas:
+        means_per_num_samples_per_alpha[alpha] = {}
+        sems_per_num_samples_per_alpha[alpha] = {}
+        for rep_idx in range(num_reps):
+            # draw sample from CRP
+            _, sampled_customer_tables = sample_from_crp(
+                T=T,
+                alphas=alphas,
+                exp_dir=exp_dir,
+                num_samples=num_samples,
+                rep_idx=rep_idx)
+
+            # for each number of subsets, calculate the error
+            for num_samples in possible_num_samples:
+                rep_errors = []
+                for rep_idx in range(num_reps):
+                    rep_error = np.square(np.linalg.norm(
+                        np.subtract(
+                            np.mean(sampled_customer_tables[:num_samples],
+                                    axis=0),
+                            analytical_customer_tables_by_alpha[alpha])
+                    ))
+                    rep_errors.append(rep_error)
+                means_per_num_samples_per_alpha[alpha][num_samples] = np.mean(rep_errors)
+                sems_per_num_samples_per_alpha[alpha][num_samples] = scipy.stats.sem(rep_errors)
+
+    return means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha
 
 
 def construct_analytical_crp(T, alphas, exp_dir):

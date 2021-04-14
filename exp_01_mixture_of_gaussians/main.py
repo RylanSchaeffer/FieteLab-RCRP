@@ -6,7 +6,8 @@ from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
 from utils.helpers import assert_numpy_no_nan_no_inf
-from utils.inference_mix_of_gauss import bayesian_recursion, dp_means_online, dp_means_offline, \
+from utils.inference import bayesian_recursion
+from utils.inference_mix_of_gauss import dp_means_online, dp_means_offline, \
     sampling_hmc_gibbs, variational_bayes
 from utils.metrics import score_predicted_clusters
 
@@ -108,61 +109,6 @@ def run_one_dataset(plot_dir,
 
 def run_and_plot_bayesian_recursion(sampled_mog_results,
                                     plot_dir):
-    def likelihood_fn(observation, parameters):
-        # create new mean for new table, centered at that point
-        parameters['means'] = np.vstack([parameters['means'], observation[np.newaxis, :]])
-        obs_dim = parameters['means'].shape[1]
-        parameters['covs'] = np.vstack([parameters['covs'], np.eye(obs_dim)[np.newaxis, :, :]])
-
-        # calculate likelihood under each cluster mean
-        covariance_determinants = np.linalg.det(parameters['covs'])
-        normalizing_constant = np.sqrt(np.power(2 * np.pi, obs_dim) * covariance_determinants)
-        # shape (num gaussians, dim of gaussians)
-        diff = (observation - parameters['means'])
-        quadratic = np.einsum(
-            'bi, bij, bj->b',
-            diff,
-            np.linalg.inv(parameters['covs']),
-            diff
-        )
-        likelihoods = np.exp(-0.5 * quadratic) / normalizing_constant
-        assert np.all(~np.isnan(likelihoods))
-
-        return likelihoods, parameters
-
-    def update_parameters_fn(observation,
-                             table_assignment_posteriors_running_sum,
-                             table_assignment_posterior,
-                             parameters):
-        # the strategy here is to update parameters as a moving average, but instead of dividing
-        # by the number of points assigned to each cluster, we divide by the total probability
-        # mass assigned to each cluster
-
-        # create a copy of observation for each possible cluster
-        stacked_observation = np.repeat(observation[np.newaxis, :],
-                                        repeats=len(table_assignment_posteriors_running_sum),
-                                        axis=0)
-
-        # compute online average of clusters' means
-        # instead of typical dynamics:
-        #       m_k <- m_k + (obs - m_k) / number of obs assigned to kth cluster
-        # we use the new dynamics
-        #       m_k <- m_k + posterior(obs belongs to kth cluster) * (obs - m_k) / total mass on kth cluster
-        # floating point errors are common here!
-        prefactor = np.divide(table_assignment_posterior,
-                              table_assignment_posteriors_running_sum)
-        prefactor[np.isnan(prefactor)] = 0.
-        assert_numpy_no_nan_no_inf(prefactor)
-
-        diff = stacked_observation - parameters['means']
-        assert_numpy_no_nan_no_inf(diff)
-        means_updates = np.multiply(
-            prefactor[:, np.newaxis],
-            diff)
-        parameters['means'] += means_updates
-        assert_numpy_no_nan_no_inf(parameters['means'])
-
-        return parameters
 
     alphas = 0.01 + np.arange(0., 5.01, 0.25)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
@@ -173,8 +119,11 @@ def run_and_plot_bayesian_recursion(sampled_mog_results,
         bayesian_recursion_results = bayesian_recursion(
             observations=sampled_mog_results['gaussian_samples_seq'],
             alpha=alpha,
-            likelihood_fn=likelihood_fn,
-            update_parameters_fn=update_parameters_fn)
+            likelihood_model='multivariate_normal',
+            em_learning_rate=1e0,
+            # likelihood_fn=likelihood_fn,
+            # update_parameters_fn=update_parameters_fn,
+        )
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
