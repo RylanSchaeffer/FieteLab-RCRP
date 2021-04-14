@@ -13,7 +13,7 @@ def bayesian_recursion(observations,
                        em_learning_rate=1e2,
                        num_em_steps=3):
     assert alpha > 0
-    assert likelihood_model in {'normal-fixed-variance', 'dirichlet',
+    assert likelihood_model in {'multivariate_normal', 'dirichlet',
                                 'bernoulli', 'continuous_bernoulli'}
     num_obs, obs_dim = observations.shape
 
@@ -41,8 +41,21 @@ def bayesian_recursion(observations,
         dtype=torch.float64,
         requires_grad=False)
 
-    if likelihood_model == 'normal-fixed-variance':
-        raise NotImplementedError
+    if likelihood_model == 'multivariate_normal':
+        cluster_parameters = dict(
+            means=torch.full(
+                size=(max_num_latents, obs_dim),
+                fill_value=np.nan,
+                dtype=torch.float64,
+                requires_grad=True),
+            stddevs=torch.full(
+                size=(max_num_latents, obs_dim, obs_dim),
+                fill_value=np.nan,
+                dtype=torch.float64,
+                requires_grad=True),
+        )
+        create_new_cluster_params_fn = create_new_cluster_params_multivariate_normal
+        likelihood_fn = likelihood_multivariate_normal
     elif likelihood_model == 'dirichlet':
         raise NotImplementedError
     elif likelihood_model == 'continuous_bernoulli':
@@ -57,7 +70,6 @@ def bayesian_recursion(observations,
         )
         create_new_cluster_params_fn = create_new_cluster_params_continuous_bernoulli
         likelihood_fn = likelihood_continuous_bernoulli
-        update_cluster_params_fn = None
 
         # make sure no observation is 0 or 1 by adding epsilon
         epsilon = 1e-2
@@ -86,6 +98,13 @@ def bayesian_recursion(observations,
             table_assignment_priors[obs_idx, 0] = 1.
             table_assignment_posteriors[obs_idx, 0] = 1.
             num_table_posteriors[obs_idx, 0] = 1.
+
+            # update running sum of posteriors
+            table_assignment_posteriors_running_sum[obs_idx, :] = torch.add(
+                table_assignment_posteriors_running_sum[obs_idx - 1, :],
+                table_assignment_posteriors[obs_idx, :])
+            assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
+                                  torch.Tensor([obs_idx + 1]).double())
         else:
             # construct prior
             table_assignment_prior = torch.clone(
@@ -107,14 +126,12 @@ def bayesian_recursion(observations,
                 optimizer.zero_grad()
 
                 # E step: infer posteriors using parameters
-                likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim = likelihood_fn(
+                likelihoods_per_latent, log_likelihoods_per_latent = likelihood_fn(
                     torch_observation=torch_observation,
                     obs_idx=obs_idx,
                     cluster_parameters=cluster_parameters)
-                assert torch.all(~torch.isnan(likelihoods_per_latent_per_obs_dim[:obs_idx + 1]))
-                assert torch.all(~torch.isnan(log_likelihoods_per_latent_per_obs_dim[:obs_idx + 1]))
-                likelihoods_per_latent = torch.prod(likelihoods_per_latent_per_obs_dim, dim=1)
-                log_likelihoods_per_latent = torch.sum(log_likelihoods_per_latent_per_obs_dim, dim=1)
+                assert torch.all(~torch.isnan(likelihoods_per_latent[:obs_idx + 1]))
+                assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
                 unnormalized_table_assignment_posterior = torch.multiply(
                     likelihoods_per_latent.type(torch.float64),
@@ -125,6 +142,18 @@ def bayesian_recursion(observations,
 
                 # record latent posterior
                 table_assignment_posteriors[obs_idx, :len(table_assignment_posterior)] = table_assignment_posterior
+
+                # print(f'Obs Index: {obs_idx}, EM Index: {em_idx}')
+                # print('Table Assignment Prior: ', table_assignment_prior.detach().numpy())
+                # print('Table Assignment Likelihood: ', likelihoods_per_latent.detach().numpy())
+                # print('Table Assignment Posterior: ', table_assignment_posterior.detach().numpy())
+
+                # update running sum of posteriors
+                table_assignment_posteriors_running_sum[obs_idx, :] = torch.add(
+                    table_assignment_posteriors_running_sum[obs_idx - 1, :],
+                    table_assignment_posteriors[obs_idx, :])
+                assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
+                                      torch.Tensor([obs_idx + 1]).double())
 
                 # M step: update parameters
                 loss = torch.mean(log_likelihoods_per_latent)
@@ -145,18 +174,28 @@ def bayesian_recursion(observations,
                 scaled_learning_rate[obs_idx] = 0.
 
                 for param_descr, param_tensor in cluster_parameters.items():
-                    scaled_logits_grad = torch.multiply(
-                        scaled_learning_rate[:, None],
-                        param_tensor.grad)
-                    param_tensor.data += scaled_logits_grad
-                    assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
+                    # the scaled learning rate has shape (num latents,) aka (num obs,)
+                    # we need to create extra dimensions of size 1 for broadcasting to work
+                    # because param_tensor can have variable number of dimensions e.g. (num obs, obs dim)
+                    # for mean vs (num obs, obs dim, obs dim) for covariance, we need to dynamically
+                    # add the corect number of dimensions
+                    reshaped_scaled_learning_rate = scaled_learning_rate.view(
+                        [scaled_learning_rate.shape[0]] + [1 for _ in range(len(param_tensor.shape[1:]))])
+                    if param_tensor.grad is None:
+                        continue
+                    else:
+                        scaled_logits_grad = torch.multiply(
+                            reshaped_scaled_learning_rate,
+                            param_tensor.grad)
+                        param_tensor.data += scaled_logits_grad
+                        assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
 
             # update posterior over number of tables using posterior over customer seat
             for k1, p_z_t_equals_k1 in enumerate(table_assignment_posteriors[obs_idx, :obs_idx + 1]):
                 for k2, p_prev_num_tables_equals_k2 in enumerate(num_table_posteriors[obs_idx - 1, :obs_idx + 1]):
-                    # exclude cases of placing customer at impossible table
+                    # advance number of tables by 1 if customer seating > number of current tables
                     if k1 > k2 + 1:
-                        num_table_posteriors.data[obs_idx, k2+1] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
+                        num_table_posteriors.data[obs_idx, k2 + 1] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
                     # customer allocated to previous table
                     elif k1 <= k2:
                         num_table_posteriors.data[obs_idx, k2] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
@@ -165,15 +204,7 @@ def bayesian_recursion(observations,
                         num_table_posteriors.data[obs_idx, k1] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
                     else:
                         raise ValueError
-            # num_table_posteriors[obs_idx, :] /= torch.sum(num_table_posteriors[obs_idx, :])
             assert torch.allclose(torch.sum(num_table_posteriors[obs_idx, :]), one_tensor)
-
-        # update running sum of posteriors
-        table_assignment_posteriors_running_sum[obs_idx, :] = torch.add(
-            table_assignment_posteriors_running_sum[obs_idx - 1, :],
-            table_assignment_posteriors[obs_idx, :])
-        assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
-                              torch.Tensor([obs_idx + 1]).double())
 
     bayesian_recursion_results = dict(
         table_assignment_priors=table_assignment_priors.detach().numpy(),
@@ -198,6 +229,16 @@ def create_new_cluster_params_continuous_bernoulli(torch_observation,
     assert_torch_no_nan_no_inf(cluster_parameters['logits'].data[:obs_idx + 1])
 
 
+def create_new_cluster_params_multivariate_normal(torch_observation,
+                                                  obs_idx,
+                                                  cluster_parameters):
+    # data is necessary to not break backprop
+    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
+    assert_torch_no_nan_no_inf(torch_observation)
+    cluster_parameters['means'].data[obs_idx, :] = torch_observation
+    cluster_parameters['stddevs'].data[obs_idx, :, :] = torch.eye(torch_observation.shape[0])
+
+
 def likelihood_continuous_bernoulli(torch_observation,
                                     obs_idx,
                                     cluster_parameters):
@@ -217,7 +258,10 @@ def likelihood_continuous_bernoulli(torch_observation,
     #         torch.pow(logits[:obs_idx + 1], torch_observation),
     #         torch.pow(1. - logits[:obs_idx + 1], 1. - torch_observation)))
 
-    return likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim
+    likelihoods_per_latent = torch.prod(likelihoods_per_latent_per_obs_dim, dim=1)
+    log_likelihoods_per_latent = torch.sum(log_likelihoods_per_latent_per_obs_dim, dim=1)
+
+    return likelihoods_per_latent, log_likelihoods_per_latent
 
 
 def likelihood_dirichlet(torch_observation,
@@ -234,12 +278,23 @@ def likelihood_discrete_bernoulli(torch_observation,
     # return likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim
 
 
-def likelihood_normal(torch_observation,
-                      obs_idx,
-                      cluster_parameters):
-    raise NotImplementedError
-    # return likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim
+def likelihood_multivariate_normal(torch_observation,
+                                   obs_idx,
+                                   cluster_parameters):
 
+    # TODO: figure out how to do gradient descent using the post-grad step means
+    # covariances = torch.stack([
+    #     torch.matmul(stddev, stddev.T) for stddev in cluster_parameters['stddevs']])
+    #
+    obs_dim = torch_observation.shape[0]
+    covariances = torch.stack([torch.matmul(torch.eye(obs_dim), torch.eye(obs_dim).T)
+                               for stddev in cluster_parameters['stddevs']]).double()
 
-def update_cluster_params_fn_continuous_bernoulli(cluster_parameters):
-    raise NotImplementedError
+    mv_normal = torch.distributions.multivariate_normal.MultivariateNormal(
+        loc=cluster_parameters['means'][:obs_idx + 1],
+        covariance_matrix=covariances[:obs_idx + 1],
+        # scale_tril=cluster_parameters['stddevs'][:obs_idx + 1],
+    )
+    log_likelihoods_per_latent = mv_normal.log_prob(value=torch_observation)
+    likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
+    return likelihoods_per_latent, log_likelihoods_per_latent

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+from sklearn.decomposition import PCA
 import torch
 import torch.nn.functional
 import torch.utils.data
@@ -24,9 +25,9 @@ def main():
     np.random.seed(1)
     torch.manual_seed(0)
 
-    images, labels = load_omniglot_dataset(exp_dir)
+    omniglot_dataset_results = load_omniglot_dataset(exp_dir)
 
-    num_obs = labels.shape[0]
+    num_obs = omniglot_dataset_results['labels'].shape[0]
     num_permutations = 5
     inference_algs_results_by_dataset = {}
     sampled_permutation_indices_by_dataset = {}
@@ -37,8 +38,8 @@ def main():
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
         sampled_permutation_indices_by_dataset[dataset_idx] = index_permutation
-        images = images[index_permutation]
-        labels = labels[index_permutation]
+        omniglot_dataset_results['images'] = omniglot_dataset_results['images'][index_permutation]
+        omniglot_dataset_results['labels'] = omniglot_dataset_results['labels'][index_permutation]
 
         dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
         if os.path.isfile(dataset_results_path):
@@ -47,8 +48,7 @@ def main():
         else:
             # otherwise, generate anew
             dataset_inference_algs_results = run_one_dataset(
-                images=images,
-                labels=labels,
+                omniglot_dataset_results=omniglot_dataset_results,
                 plot_dir=dataset_dir)
             dataset_results = dict(
                 dataset_inference_algs_results=dataset_inference_algs_results,
@@ -63,8 +63,8 @@ def main():
         inference_algs_results_by_dataset[dataset_idx] = dataset_results['dataset_inference_algs_results']
 
     plot_inference_algs_comparison(
-        images=images,
-        labels=labels,
+        images=omniglot_dataset_results['images'],
+        labels=omniglot_dataset_results['labels'],
         plot_dir=plot_dir,
         inference_algs_results_by_dataset=inference_algs_results_by_dataset,
         sampled_permutation_indices_by_dataset=sampled_permutation_indices_by_dataset)
@@ -93,7 +93,8 @@ def load_omniglot_dataset(exp_dir):
     # truncate dataset for now
     # character_classes = [images_and_classes[1] for images_and_classes in
     #                      omniglot_dataset._flat_character_images]
-    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:11]
+    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:120]
+    dataset_size = len(omniglot_dataset._flat_character_images)
 
     omniglot_dataloader = torch.utils.data.DataLoader(
         dataset=omniglot_dataset,
@@ -116,23 +117,27 @@ def load_omniglot_dataset(exp_dir):
     images[images < epsilon] = epsilon
     labels = np.array(labels)
 
-    from sklearn.decomposition import PCA
-
-    reshaped_images = np.reshape(images, newshape=(11, 9*9))
-    pca = PCA(n_components=3)
+    reshaped_images = np.reshape(images, newshape=(dataset_size, 9*9))
+    pca = PCA(n_components=5)
     pca_images = pca.fit_transform(reshaped_images)
-    # pca.explained_variance_
+    cum_frac_var_explained = np.cumsum(pca.explained_variance_ratio_)
 
-    return images, labels
+    omniglot_dataset_results = dict(
+        images=images,
+        labels=labels,
+        pca=pca,
+        pca_images=pca_images,
+        cum_frac_var_explained=cum_frac_var_explained,
+    )
+
+    return omniglot_dataset_results
 
 
-def run_one_dataset(images,
-                    labels,
+def run_one_dataset(omniglot_dataset_results,
                     plot_dir):
 
     bayesian_recursion_results = run_and_plot_bayesian_recursion(
-        images=images,
-        labels=labels,
+        omniglot_dataset_results=omniglot_dataset_results,
         plot_dir=plot_dir)
 
     inference_algs_results = {
@@ -147,11 +152,10 @@ def run_one_dataset(images,
     return inference_algs_results
 
 
-def run_and_plot_bayesian_recursion(images,
-                                    labels,
+def run_and_plot_bayesian_recursion(omniglot_dataset_results,
                                     plot_dir):
 
-    alphas = np.arange(5., 50.01, 5.)
+    alphas = np.arange(1., 2.01, 1.)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
@@ -163,17 +167,25 @@ def run_and_plot_bayesian_recursion(images,
         #     alpha=alpha)
 
         bayesian_recursion_results = utils.inference.bayesian_recursion(
-            observations=images.reshape(images.shape[0], -1),
-            likelihood_model='continuous_bernoulli',
+            observations=omniglot_dataset_results['pca_images'],
+            # likelihood_model='continuous_bernoulli',
+            likelihood_model='multivariate_normal',
+            em_learning_rate=1e1,
             alpha=alpha)
+        
+        # bayesian_recursion_results = utils.inference.bayesian_recursion(
+        #     observations=omniglot_dataset_results['images'].reshape(omniglot_dataset_results['images'].shape[0], -1),
+        #     likelihood_model='continuous_bernoulli',
+        #     em_learning_rate=1e1,
+        #     alpha=alpha)
 
         # add cluster probs from cluster logits
-        bayesian_recursion_results['parameters']['probs'] = utils.helpers.numpy_logits_to_probs(
-            bayesian_recursion_results['parameters']['logits'])
+        # bayesian_recursion_results['parameters']['probs'] = utils.helpers.numpy_logits_to_probs(
+        #     bayesian_recursion_results['parameters']['logits'])
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=labels,
+            true_cluster_labels=omniglot_dataset_results['labels'],
             table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
         scores_by_alpha[alpha] = scores
 
@@ -181,8 +193,7 @@ def run_and_plot_bayesian_recursion(images,
         num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
 
         plot_inference_results(
-            images=images,
-            labels=labels,
+            omniglot_dataset_results=omniglot_dataset_results,
             inference_results=bayesian_recursion_results,
             inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
             plot_dir=bayesian_recursion_plot_dir)

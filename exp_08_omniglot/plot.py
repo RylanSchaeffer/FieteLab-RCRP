@@ -6,24 +6,35 @@ import pandas as pd
 import seaborn as sns
 
 
-def plot_inference_results(images,
-                           labels,
+def plot_inference_results(omniglot_dataset_results: dict,
                            inference_results: dict,
                            inference_alg: str,
                            plot_dir):
+    labels = omniglot_dataset_results['labels']
     num_obs = len(labels)
-    for obs_idx in range(num_obs):
-        fig, axes = plt.subplots(nrows=1,
-                                 ncols=2,
-                                 figsize=(8, 5))
-        axes[0].imshow(images[obs_idx], cmap='gray')
-        axes[0].set_title('Image')
-        axes[1].imshow(np.reshape(inference_results['parameters']['probs'][obs_idx],
-                                  newshape=images[obs_idx].shape),
-                       cmap='gray')
-        axes[1].set_title('Parameters')
-        plt.show()
-        break
+    # for obs_idx in range(num_obs):
+    #     fig, axes = plt.subplots(nrows=1,
+    #                              ncols=2,
+    #                              figsize=(8, 5))
+    #     axes[0].imshow(omniglot_dataset_results['images'][obs_idx], cmap='gray')
+    #     axes[0].set_title('Image')
+    #     axes[1].imshow(np.reshape(inference_results['parameters']['probs'][obs_idx],
+    #                               newshape=omniglot_dataset_results['images'][obs_idx].shape),
+    #                    cmap='gray')
+    #     axes[1].set_title('Parameters')
+    #     plt.show()
+    #     break
+
+    # params_as_images = omniglot_dataset_results['pca'].inverse_transform(
+    #     inference_results['parameters']['means']).reshape((labels.shape[0], 9, 9))
+    # fig, axes = plt.subplots(nrows=1,
+    #                          ncols=num_obs,
+    #                          figsize=(4*num_obs, 5))
+    # for obs_idx in range(num_obs):
+    #     axes[obs_idx].imshow(params_as_images[obs_idx],
+    #                          cmap='gray')
+    #     axes[obs_idx].set_title('Parameters')
+    # plt.show()
 
     one_hot_labels = pd.get_dummies(labels)
 
@@ -33,7 +44,7 @@ def plot_inference_results(images,
     one_hot_labels = one_hot_labels[one_hot_labels.columns[idx_order_of_appearance]]
 
     fig, axes = plt.subplots(nrows=1,
-                             ncols=3,
+                             ncols=4,
                              figsize=(12, 5))
 
     ax = axes[0]
@@ -51,9 +62,11 @@ def plot_inference_results(images,
     posterior_cutoff = 1e-5
     table_assignment_priors[table_assignment_priors < posterior_cutoff] = np.nan
     table_assignment_posteriors[table_assignment_posteriors < posterior_cutoff] = np.nan
-    sns.heatmap(data=table_assignment_priors,
+    max_posterior_index = np.argmax(np.all(np.isnan(table_assignment_posteriors), axis=0)) + 1
+    sns.heatmap(data=table_assignment_priors[:, :max_posterior_index],
                 ax=ax,
-                mask=np.isnan(table_assignment_priors),
+                yticklabels=False,
+                mask=np.isnan(table_assignment_priors[:, :max_posterior_index]),
                 cmap='jet',
                 norm=LogNorm(),
                 vmax=1.,
@@ -62,14 +75,26 @@ def plot_inference_results(images,
 
     # plot predicted classes
     ax = axes[2]
-    sns.heatmap(data=table_assignment_posteriors,
+    sns.heatmap(data=table_assignment_posteriors[:, :max_posterior_index],
                 ax=ax,
-                mask=np.isnan(table_assignment_posteriors),
+                yticklabels=False,
+                mask=np.isnan(table_assignment_posteriors[:, :max_posterior_index]),
                 cmap='jet',
                 norm=LogNorm(),
                 vmax=1.,
                 vmin=posterior_cutoff)
     ax.set_xlabel(r'$p(z_t=k|x_{\leq t})$')
+
+    ax = axes[3]
+    sns.heatmap(data=inference_results['num_table_posteriors'][:, :max_posterior_index],
+                ax=ax,
+                yticklabels=False,
+                mask=inference_results['num_table_posteriors'][:, :max_posterior_index] < posterior_cutoff,
+                cmap='jet',
+                norm=LogNorm(),
+                vmax=1.,
+                vmin=posterior_cutoff)
+    ax.set_xlabel(r'$p(K_t=k|x_{\leq t})$')
 
     plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_assignments.png'),
                 bbox_inches='tight',
