@@ -4,12 +4,12 @@ import torch.distributions
 import torch.nn
 import torch.optim
 
-from utils.helpers import assert_torch_no_nan_no_inf
+from utils.helpers import assert_torch_no_nan_no_inf, torch_logits_to_probs, torch_probs_to_logits
 
 
 def bayesian_recursion(observations,
                        alpha: float,
-                       num_em_steps=1):
+                       num_em_steps=3):
     assert alpha > 0
     num_obs, obs_dim = observations.shape
 
@@ -52,7 +52,7 @@ def bayesian_recursion(observations,
     observations[observations == 1.] -= epsilon
     observations[observations == 0.] += epsilon
     torch_observations = torch.from_numpy(observations)
-    em_learning_rate = 1e0
+    em_learning_rate = 1e2
     one_tensor = torch.Tensor([1.]).double()
 
     for obs_idx, torch_observation in enumerate(torch_observations):
@@ -60,7 +60,7 @@ def bayesian_recursion(observations,
         # create new params for possible cluster, centered at that point
         # data is necessary to not break backprop
         # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
-        torch_obs_as_logits = probs_to_logits(torch_observation)
+        torch_obs_as_logits = torch_probs_to_logits(torch_observation)
         assert_torch_no_nan_no_inf(torch_obs_as_logits)
         cluster_logits.data[obs_idx, :] = torch_obs_as_logits
         assert_torch_no_nan_no_inf(cluster_logits.data[:obs_idx+1])
@@ -89,7 +89,7 @@ def bayesian_recursion(observations,
             #         torch.pow(cluster_logits[:obs_idx + 1], torch_observation),
             #         torch.pow(1. - cluster_logits[:obs_idx + 1], 1. - torch_observation)))
             assert torch.all(~torch.isnan(likelihoods_per_obs_dim[:obs_idx + 1]))
-            likelihoods = torch.prod(likelihoods_per_obs_dim.double(), dim=1)
+            likelihoods = torch.prod(likelihoods_per_obs_dim, dim=1)
 
             if obs_idx == 0:
                 # first customer has to go at first table
@@ -183,17 +183,9 @@ def bayesian_recursion(observations,
         num_table_posteriors=num_table_posteriors.detach().numpy(),
         parameters=dict(
             cluster_logits=cluster_logits.detach().numpy(),
-            cluster_probs=logits_to_probs(cluster_logits).detach().numpy()),
+            cluster_probs=torch_logits_to_probs(cluster_logits).detach().numpy()),
     )
 
     return bayesian_recursion_results
 
 
-def logits_to_probs(logits):
-    probs = 1. / (1. + torch.exp(-logits))
-    return probs
-
-
-def probs_to_logits(probs):
-    logits = - torch.log(1. / probs - 1.)
-    return logits

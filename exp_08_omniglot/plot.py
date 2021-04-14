@@ -11,6 +11,19 @@ def plot_inference_results(images,
                            inference_results: dict,
                            inference_alg: str,
                            plot_dir):
+    num_obs = len(labels)
+    for obs_idx in range(num_obs):
+        fig, axes = plt.subplots(nrows=1,
+                                 ncols=2,
+                                 figsize=(8, 5))
+        axes[0].imshow(images[obs_idx], cmap='gray')
+        axes[0].set_title('Image')
+        axes[1].imshow(np.reshape(inference_results['parameters']['probs'][obs_idx],
+                                  newshape=images[obs_idx].shape),
+                       cmap='gray')
+        axes[1].set_title('Parameters')
+        plt.show()
+        break
 
     one_hot_labels = pd.get_dummies(labels)
 
@@ -20,8 +33,8 @@ def plot_inference_results(images,
     one_hot_labels = one_hot_labels[one_hot_labels.columns[idx_order_of_appearance]]
 
     fig, axes = plt.subplots(nrows=1,
-                             ncols=2,
-                             figsize=(8, 5))
+                             ncols=3,
+                             figsize=(12, 5))
 
     ax = axes[0]
     sns.heatmap(data=one_hot_labels.values,
@@ -32,24 +45,37 @@ def plot_inference_results(images,
     ax.set_ylabel('Observation #')
     ax.set_xlabel('True Class')
 
-    # plot predicted classes
     ax = axes[1]
-    pred_labels = np.copy(inference_results['table_assignment_posteriors'])
-    cutoff = 1e-6
-    pred_labels[pred_labels < cutoff] = np.nan
-    sns.heatmap(data=pred_labels,
+    table_assignment_priors = np.copy(inference_results['table_assignment_priors'])
+    table_assignment_posteriors = np.copy(inference_results['table_assignment_posteriors'])
+    posterior_cutoff = 1e-5
+    table_assignment_priors[table_assignment_priors < posterior_cutoff] = np.nan
+    table_assignment_posteriors[table_assignment_posteriors < posterior_cutoff] = np.nan
+    sns.heatmap(data=table_assignment_priors,
                 ax=ax,
-                mask=np.isnan(pred_labels),
-                # yticklabels=False,
+                mask=np.isnan(table_assignment_priors),
                 cmap='jet',
-                norm=LogNorm(vmax=1.),
-                )
+                norm=LogNorm(),
+                vmax=1.,
+                vmin=posterior_cutoff)
+    ax.set_xlabel(r'$p(z_t=k|x_{<t})$')
 
-    ax.set_xlabel('Pred Class')
-    # ax.set_title(r'$p(z_t=k|x_{<t})$')
+    # plot predicted classes
+    ax = axes[2]
+    sns.heatmap(data=table_assignment_posteriors,
+                ax=ax,
+                mask=np.isnan(table_assignment_posteriors),
+                cmap='jet',
+                norm=LogNorm(),
+                vmax=1.,
+                vmin=posterior_cutoff)
+    ax.set_xlabel(r'$p(z_t=k|x_{\leq t})$')
 
+    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_assignments.png'),
+                bbox_inches='tight',
+                dpi=300)
     plt.show()
-    print(10)
+    plt.close()
 
 
 def plot_inference_algs_comparison(images,
@@ -57,7 +83,6 @@ def plot_inference_algs_comparison(images,
                                    inference_algs_results_by_dataset: dict,
                                    sampled_permutation_indices_by_dataset: dict,
                                    plot_dir: str):
-
     num_datasets = len(inference_algs_results_by_dataset)
     num_clusters = len(np.unique(labels))
 
@@ -131,7 +156,6 @@ def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inferen
 
 def plot_inference_algs_scores_by_param(scores_by_dataset_by_inference_alg_by_scoring_metric: dict,
                                         plot_dir: str):
-
     # for each scoring function, plot score (y) vs parameter (x)
     for scoring_metric, scores_by_dataset_by_inference_alg in scores_by_dataset_by_inference_alg_by_scoring_metric.items():
         for inference_alg_str, inference_algs_scores_df in scores_by_dataset_by_inference_alg.items():

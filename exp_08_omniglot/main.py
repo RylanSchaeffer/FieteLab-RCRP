@@ -10,7 +10,9 @@ import torchvision
 
 from exp_08_omniglot.plot import plot_inference_results, plot_inference_algs_comparison
 
-from utils.inference_mix_of_cont_bernoullis import bayesian_recursion
+import utils.helpers
+import utils.inference_mix_of_cont_bernoullis
+import utils.inference
 from utils.metrics import score_predicted_clusters
 
 
@@ -101,11 +103,11 @@ def load_omniglot_dataset(exp_dir):
     images, labels = [], []
     for image, label in omniglot_dataloader:
         # visualize first image, if curious
-        plt.imshow(image[0, 0, :, :].numpy(), cmap='gray')
-        plt.show()
-        # images.append(image[0, :, :])
         images.append(image[0, 0, :, :])
+        # images.append(omniglot_dataset[0][0][0, :, :])
         labels.append(label)
+        # plt.imshow(images[-1].numpy(), cmap='gray')
+        # plt.show()
 
     images = torch.stack(images).numpy()
     epsilon = 1e-2
@@ -113,6 +115,13 @@ def load_omniglot_dataset(exp_dir):
     images[images > 1. - epsilon] = 1. - epsilon
     images[images < epsilon] = epsilon
     labels = np.array(labels)
+
+    from sklearn.decomposition import PCA
+
+    reshaped_images = np.reshape(images, newshape=(11, 9*9))
+    pca = PCA(n_components=3)
+    pca_images = pca.fit_transform(reshaped_images)
+    # pca.explained_variance_
 
     return images, labels
 
@@ -142,16 +151,25 @@ def run_and_plot_bayesian_recursion(images,
                                     labels,
                                     plot_dir):
 
-    alphas = np.arange(0.1, 50.01, 5.)
+    alphas = np.arange(5., 50.01, 5.)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
     num_clusters_by_alpha = {}
     scores_by_alpha = {}
     for alpha in alphas:
 
-        bayesian_recursion_results = bayesian_recursion(
+        # bayesian_recursion_results = utils.inference_mix_of_cont_bernoullis.bayesian_recursion(
+        #     observations=images.reshape(images.shape[0], -1),
+        #     alpha=alpha)
+
+        bayesian_recursion_results = utils.inference.bayesian_recursion(
             observations=images.reshape(images.shape[0], -1),
+            likelihood_model='continuous_bernoulli',
             alpha=alpha)
+
+        # add cluster probs from cluster logits
+        bayesian_recursion_results['parameters']['probs'] = utils.helpers.numpy_logits_to_probs(
+            bayesian_recursion_results['parameters']['logits'])
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
@@ -177,7 +195,6 @@ def run_and_plot_bayesian_recursion(images,
     )
 
     return bayesian_recursion_results
-
 
 
 if __name__ == '__main__':
