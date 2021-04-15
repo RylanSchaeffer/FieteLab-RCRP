@@ -2,6 +2,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+import utils.inference
 from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
@@ -17,7 +18,7 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
-    num_datasets = 5
+    num_datasets = 2
     inference_algs_results_by_dataset = {}
     sampled_mog_results_by_dataset = {}
     # generate lots of datasets and record performance
@@ -65,51 +66,107 @@ def run_one_dataset(plot_dir,
         gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
                              gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
-    bayesian_recursion_results = run_and_plot_bayesian_recursion(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
+    concentration_params = 0.01 + np.arange(0., 5.01, 0.25)
 
-    dp_means_offline_results = run_and_plot_dp_means_offline(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
+    inference_alg_strs = [
+        'bayesian_recursion',
+        'local_map',
+        'dp_means_offline',
+        'dp_means_online',
+        'hmc_gibbs'
+    ]
 
-    dp_means_online_results = run_and_plot_dp_means_online(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
+    inference_algs_results = {}
 
-    hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-        num_samples=5000)
+    for inference_alg_str in inference_alg_strs:
+        inference_alg_result = run_and_plot_inference_alg(
+            sampled_mog_results=sampled_mog_results,
+            inference_alg_str=inference_alg_str,
+            concentration_params=concentration_params,
+            plot_dir=plot_dir)
+        inference_algs_results[inference_alg_str] = inference_alg_result
 
-    hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir,
-        gaussian_cov_scaling=gaussian_cov_scaling,
-        gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-        num_samples=20000)
-
-    variational_bayes_results = run_and_plot_variational_bayes(
-        sampled_mog_results=sampled_mog_results,
-        plot_dir=plot_dir)
-
-    inference_algs_results = {
-        'Bayesian Recursion': bayesian_recursion_results,
-        'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
-        'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
-        'DP-Means (Online)': dp_means_online_results,
-        'DP-Means (Offline)': dp_means_offline_results,
-        'Variational Bayes': variational_bayes_results,
-    }
+    # dp_means_online_results = run_and_plot_dp_means_online(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
+    #
+    # hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir,
+    #     gaussian_cov_scaling=gaussian_cov_scaling,
+    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+    #     num_samples=5000)
+    #
+    # hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir,
+    #     gaussian_cov_scaling=gaussian_cov_scaling,
+    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+    #     num_samples=20000)
+    #
+    # variational_bayes_results = run_and_plot_variational_bayes(
+    #     sampled_mog_results=sampled_mog_results,
+    #     plot_dir=plot_dir)
 
     return inference_algs_results, sampled_mog_results
 
 
-def run_and_plot_bayesian_recursion(sampled_mog_results,
-                                    plot_dir):
+def run_and_plot_inference_alg(sampled_mog_results,
+                               inference_alg_str,
+                               concentration_params,
+                               plot_dir):
+    inference_alg_plot_dir = os.path.join(plot_dir, inference_alg_str)
+    os.makedirs(inference_alg_plot_dir, exist_ok=True)
+    num_clusters_by_concentration_param = {}
+    scores_by_concentration_param = {}
 
+    if inference_alg_str == 'bayesian_recursion':
+        inference_alg_fn = utils.inference.bayesian_recursion
+    elif inference_alg_str == 'local_map':
+        inference_alg_fn = utils.inference.local_map
+    elif inference_alg_str == 'dp_means_online':
+        raise NotImplementedError
+    elif inference_alg_str == 'dp_means_offline':
+        raise NotImplementedError
+    elif inference_alg_str == 'hmc_gibbs':
+        raise NotImplementedError
+    else:
+        raise ValueError
+
+    for concentration_param in concentration_params:
+        inference_alg_results = inference_alg_fn(
+            observations=sampled_mog_results['gaussian_samples_seq'],
+            alpha=concentration_param,
+            likelihood_model='multivariate_normal',
+            em_learning_rate=1e0)
+
+        # record scores
+        scores, pred_cluster_labels = score_predicted_clusters(
+            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
+            table_assignment_posteriors=inference_alg_results['table_assignment_posteriors'])
+        scores_by_concentration_param[concentration_param] = scores
+
+        # count number of clusters
+        num_clusters_by_concentration_param[concentration_param] = len(np.unique(pred_cluster_labels))
+
+        plot_inference_results(
+            sampled_mog_results=sampled_mog_results,
+            inference_results=inference_alg_results,
+            inference_alg='bayesian_recursion_alpha={:.2f}'.format(concentration_param),
+            plot_dir=inference_alg_plot_dir)
+
+        print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
+
+    inference_alg_results = dict(
+        num_clusters_by_param=num_clusters_by_concentration_param,
+        scores_by_param=pd.DataFrame(scores_by_concentration_param).T,
+    )
+
+    return inference_alg_results
+
+
+def run_and_plot_bayesian_recursion(sampled_mog_results: dict,
+                                    plot_dir):
     alphas = 0.01 + np.arange(0., 5.01, 0.25)
     bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
     os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
