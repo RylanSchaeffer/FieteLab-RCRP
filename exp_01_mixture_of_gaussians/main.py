@@ -66,10 +66,10 @@ def run_one_dataset(plot_dir,
         gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
                              gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
-    concentration_params = 0.01 + np.arange(0., 5.01, 0.25)
+    concentration_params = 1.01 + np.arange(0., 5.01, 0.25)
 
     inference_alg_strs = [
-        'bayesian_recursion',
+        # 'bayesian_recursion',
         'local_map',
         'dp_means_offline',
         'dp_means_online',
@@ -136,7 +136,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
     for concentration_param in concentration_params:
         inference_alg_results = inference_alg_fn(
             observations=sampled_mog_results['gaussian_samples_seq'],
-            alpha=concentration_param,
+            concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
             em_learning_rate=1e0)
 
@@ -175,7 +175,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results: dict,
     for alpha in alphas:
         bayesian_recursion_results = bayesian_recursion(
             observations=sampled_mog_results['gaussian_samples_seq'],
-            alpha=alpha,
+            concentration_param=alpha,
             likelihood_model='multivariate_normal',
             em_learning_rate=1e0,
             # likelihood_fn=likelihood_fn,

@@ -4,17 +4,18 @@ import scipy.special
 import torch
 import torch.distributions
 import torch.nn
+import torch.nn.functional
 import torch.optim
 
 from utils.helpers import assert_torch_no_nan_no_inf, torch_logits_to_probs, torch_probs_to_logits
 
 
 def bayesian_recursion(observations,
-                       alpha: float,
+                       concentration_param: float,
                        likelihood_model: str,
                        em_learning_rate=1e2,
                        num_em_steps=3):
-    assert alpha > 0
+    assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
                                 'bernoulli', 'continuous_bernoulli'}
     num_obs, obs_dim = observations.shape
@@ -123,10 +124,10 @@ def bayesian_recursion(observations,
             # we don't subtract 1 because Python uses 0-based indexing
             assert torch.allclose(torch.sum(table_assignment_prior), torch.Tensor([obs_idx]).double())
             # add new table probability
-            table_assignment_prior[1:] += alpha * torch.clone(
+            table_assignment_prior[1:] += concentration_param * torch.clone(
                 num_table_posteriors[obs_idx - 1, :obs_idx])
             # renormalize
-            table_assignment_prior /= (alpha + obs_idx)
+            table_assignment_prior /= (concentration_param + obs_idx)
             assert torch.allclose(torch.sum(table_assignment_prior), one_tensor)
 
             # record latent prior
@@ -167,6 +168,9 @@ def bayesian_recursion(observations,
                                       torch.Tensor([obs_idx + 1]).double())
 
                 # M step: update parameters
+                # Note: log likelihood is all we need for optimization because
+                # log p(x, z; params) = log p(x|z; params) + log p(z)
+                # and the second is constant w.r.t. params gradient
                 loss = torch.mean(log_likelihoods_per_latent)
                 loss.backward()
 
@@ -230,13 +234,18 @@ def bayesian_recursion(observations,
 
 
 def local_map(observations,
-              alpha: float,
+              concentration_param: float,
               likelihood_model: str,
               em_learning_rate=1e2,
               num_em_steps=3):
-    assert alpha > 0
+
+    # TODO: merge with Bayesian recursion
+
+    assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
                                 'bernoulli', 'continuous_bernoulli'}
+    assert isinstance(num_em_steps, int)
+    assert num_em_steps > 0
     num_obs, obs_dim = observations.shape
 
     # The recursion does not require recording the full history of priors/posteriors
@@ -343,10 +352,10 @@ def local_map(observations,
             # we don't subtract 1 because Python uses 0-based indexing
             assert torch.allclose(torch.sum(table_assignment_prior), torch.Tensor([obs_idx]).double())
             # add new table probability
-            table_assignment_prior[1:] += alpha * torch.clone(
+            table_assignment_prior[1:] += concentration_param * torch.clone(
                 num_table_posteriors[obs_idx - 1, :obs_idx])
             # renormalize
-            table_assignment_prior /= (alpha + obs_idx)
+            table_assignment_prior /= (concentration_param + obs_idx)
             assert torch.allclose(torch.sum(table_assignment_prior), one_tensor)
 
             # record latent prior
@@ -369,7 +378,6 @@ def local_map(observations,
                     table_assignment_prior)
                 table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
                     unnormalized_table_assignment_posterior)
-                assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
 
                 # record latent posterior
                 table_assignment_posteriors[obs_idx, :len(table_assignment_posterior)] = table_assignment_posterior
@@ -387,6 +395,9 @@ def local_map(observations,
                                       torch.Tensor([obs_idx + 1]).double())
 
                 # M step: update parameters
+                # Note: log likelihood is all we need for optimization because
+                # log p(x, z; params) = log p(x|z; params) + log p(z)
+                # and the second is constant w.r.t. params gradient
                 loss = torch.mean(log_likelihoods_per_latent)
                 loss.backward()
 
@@ -437,7 +448,15 @@ def local_map(observations,
                         raise ValueError
             assert torch.allclose(torch.sum(num_table_posteriors[obs_idx, :]), one_tensor)
 
-    bayesian_recursion_results = dict(
+            # apply local MAP approximation
+            max_idx = torch.argmax(table_assignment_posterior)
+            table_assignment_posterior = torch.nn.functional.one_hot(
+                max_idx,
+                num_classes=table_assignment_posterior.shape[0]).double()
+            assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
+            table_assignment_posteriors[obs_idx, :obs_idx + 1] = table_assignment_posterior
+
+    local_map_results = dict(
         table_assignment_priors=table_assignment_priors.detach().numpy(),
         table_assignment_posteriors=table_assignment_posteriors.detach().numpy(),
         table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.detach().numpy(),
@@ -446,7 +465,7 @@ def local_map(observations,
         # TODO: why do I have to detach here?
     )
 
-    return bayesian_recursion_results
+    return local_map_results
 
 
 def create_new_cluster_params_bernoulli(torch_observation,
