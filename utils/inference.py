@@ -13,8 +13,8 @@ from utils.helpers import assert_torch_no_nan_no_inf, torch_logits_to_probs, tor
 def bayesian_recursion(observations,
                        concentration_param: float,
                        likelihood_model: str,
-                       em_learning_rate=1e2,
-                       num_em_steps=3):
+                       learning_rate: float = 1e2,
+                       num_em_steps: int = 3):
     assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
                                 'bernoulli', 'continuous_bernoulli'}
@@ -179,7 +179,7 @@ def bayesian_recursion(observations,
                 # we use the new dynamics
                 #       p_k <- p_k + posterior(obs belongs to kth cluster) * (obs - p_k) / total mass on kth cluster
                 # that effectively means the learning rate should be this scaled_prefactor
-                scaled_learning_rate = em_learning_rate * torch.divide(
+                scaled_learning_rate = learning_rate * torch.divide(
                     table_assignment_posteriors[obs_idx, :],
                     table_assignment_posteriors_running_sum[obs_idx, :]) / num_em_steps
                 scaled_learning_rate[torch.isnan(scaled_learning_rate)] = 0.
@@ -233,12 +233,12 @@ def bayesian_recursion(observations,
     return bayesian_recursion_results
 
 
-def local_map(observations,
-              concentration_param: float,
-              likelihood_model: str,
-              em_learning_rate=1e2):
-
-    # TODO: merge with Bayesian recursion
+def sequential_updating_and_greedy_search(observations,
+                                          concentration_param: float,
+                                          likelihood_model: str,
+                                          learning_rate: float = 1e2):
+    # Fast Bayesian Inference in Dirichlet Process Mixture Models
+    # Wang and Dunson (2011)
 
     assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
@@ -360,7 +360,7 @@ def local_map(observations,
 
             optimizer.zero_grad()
 
-            # E step: infer posteriors using parameters
+            # infer posteriors using parameters
             likelihoods_per_latent, log_likelihoods_per_latent = likelihood_fn(
                 torch_observation=torch_observation,
                 obs_idx=obs_idx,
@@ -391,7 +391,7 @@ def local_map(observations,
             assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
                                   torch.Tensor([obs_idx + 1]).double())
 
-            # M step: update parameters
+            # next, update parameters
             # Note: log likelihood is all we need for optimization because
             # log p(x, z; params) = log p(x|z; params) + log p(z)
             # and the second is constant w.r.t. params gradient
@@ -403,7 +403,7 @@ def local_map(observations,
             # we use the new dynamics
             #       p_k <- p_k + posterior(obs belongs to kth cluster) * (obs - p_k) / total mass on kth cluster
             # that effectively means the learning rate should be this scaled_prefactor
-            scaled_learning_rate = em_learning_rate * torch.divide(
+            scaled_learning_rate = learning_rate * torch.divide(
                 table_assignment_posteriors[obs_idx, :],
                 table_assignment_posteriors_running_sum[obs_idx, :])
             scaled_learning_rate[torch.isnan(scaled_learning_rate)] = 0.
@@ -442,6 +442,15 @@ def local_map(observations,
     )
 
     return local_map_results
+
+
+def variational_sequential_updating_and_greedy_search(observations,
+                                                      concentration_param: float,
+                                                      likelihood_model: str,
+                                                      learning_rate: float = 1e2):
+    # A sequential algorithm for fast fitting of Dirichlet process mixture models
+    # Nott, Zhang, Yau and Jasra (2013)
+    raise NotImplementedError
 
 
 def create_new_cluster_params_bernoulli(torch_observation,
