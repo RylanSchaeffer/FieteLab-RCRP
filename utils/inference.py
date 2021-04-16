@@ -199,10 +199,10 @@ def bayesian_recursion(observations,
                     if param_tensor.grad is None:
                         continue
                     else:
-                        scaled_logits_grad = torch.multiply(
+                        scaled_param_tensor_grad = torch.multiply(
                             reshaped_scaled_learning_rate,
                             param_tensor.grad)
-                        param_tensor.data += scaled_logits_grad
+                        param_tensor.data += scaled_param_tensor_grad
                         assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
 
             # update posterior over number of tables using posterior over customer seat
@@ -236,16 +236,13 @@ def bayesian_recursion(observations,
 def local_map(observations,
               concentration_param: float,
               likelihood_model: str,
-              em_learning_rate=1e2,
-              num_em_steps=3):
+              em_learning_rate=1e2):
 
     # TODO: merge with Bayesian recursion
 
     assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
                                 'bernoulli', 'continuous_bernoulli'}
-    assert isinstance(num_em_steps, int)
-    assert num_em_steps > 0
     num_obs, obs_dim = observations.shape
 
     # The recursion does not require recording the full history of priors/posteriors
@@ -361,92 +358,21 @@ def local_map(observations,
             # record latent prior
             table_assignment_priors[obs_idx, :len(table_assignment_prior)] = table_assignment_prior
 
-            for em_idx in range(num_em_steps):
+            optimizer.zero_grad()
 
-                optimizer.zero_grad()
+            # E step: infer posteriors using parameters
+            likelihoods_per_latent, log_likelihoods_per_latent = likelihood_fn(
+                torch_observation=torch_observation,
+                obs_idx=obs_idx,
+                cluster_parameters=cluster_parameters)
+            assert torch.all(~torch.isnan(likelihoods_per_latent[:obs_idx + 1]))
+            assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
-                # E step: infer posteriors using parameters
-                likelihoods_per_latent, log_likelihoods_per_latent = likelihood_fn(
-                    torch_observation=torch_observation,
-                    obs_idx=obs_idx,
-                    cluster_parameters=cluster_parameters)
-                assert torch.all(~torch.isnan(likelihoods_per_latent[:obs_idx + 1]))
-                assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
-
-                unnormalized_table_assignment_posterior = torch.multiply(
-                    likelihoods_per_latent.type(torch.float64),
-                    table_assignment_prior)
-                table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
-                    unnormalized_table_assignment_posterior)
-
-                # record latent posterior
-                table_assignment_posteriors[obs_idx, :len(table_assignment_posterior)] = table_assignment_posterior
-
-                # print(f'Obs Index: {obs_idx}, EM Index: {em_idx}')
-                # print('Table Assignment Prior: ', table_assignment_prior.detach().numpy())
-                # print('Table Assignment Likelihood: ', likelihoods_per_latent.detach().numpy())
-                # print('Table Assignment Posterior: ', table_assignment_posterior.detach().numpy())
-
-                # update running sum of posteriors
-                table_assignment_posteriors_running_sum[obs_idx, :] = torch.add(
-                    table_assignment_posteriors_running_sum[obs_idx - 1, :],
-                    table_assignment_posteriors[obs_idx, :])
-                assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
-                                      torch.Tensor([obs_idx + 1]).double())
-
-                # M step: update parameters
-                # Note: log likelihood is all we need for optimization because
-                # log p(x, z; params) = log p(x|z; params) + log p(z)
-                # and the second is constant w.r.t. params gradient
-                loss = torch.mean(log_likelihoods_per_latent)
-                loss.backward()
-
-                # instead of typical dynamics:
-                #       p_k <- p_k + (obs - p_k) / number of obs assigned to kth cluster
-                # we use the new dynamics
-                #       p_k <- p_k + posterior(obs belongs to kth cluster) * (obs - p_k) / total mass on kth cluster
-                # that effectively means the learning rate should be this scaled_prefactor
-                scaled_learning_rate = em_learning_rate * torch.divide(
-                    table_assignment_posteriors[obs_idx, :],
-                    table_assignment_posteriors_running_sum[obs_idx, :]) / num_em_steps
-                scaled_learning_rate[torch.isnan(scaled_learning_rate)] = 0.
-                scaled_learning_rate[torch.isinf(scaled_learning_rate)] = 0.
-
-                # don't update the newest cluster
-                scaled_learning_rate[obs_idx] = 0.
-
-                for param_descr, param_tensor in cluster_parameters.items():
-                    # the scaled learning rate has shape (num latents,) aka (num obs,)
-                    # we need to create extra dimensions of size 1 for broadcasting to work
-                    # because param_tensor can have variable number of dimensions e.g. (num obs, obs dim)
-                    # for mean vs (num obs, obs dim, obs dim) for covariance, we need to dynamically
-                    # add the corect number of dimensions
-                    reshaped_scaled_learning_rate = scaled_learning_rate.view(
-                        [scaled_learning_rate.shape[0]] + [1 for _ in range(len(param_tensor.shape[1:]))])
-                    if param_tensor.grad is None:
-                        continue
-                    else:
-                        scaled_logits_grad = torch.multiply(
-                            reshaped_scaled_learning_rate,
-                            param_tensor.grad)
-                        param_tensor.data += scaled_logits_grad
-                        assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
-
-            # update posterior over number of tables using posterior over customer seat
-            for k1, p_z_t_equals_k1 in enumerate(table_assignment_posteriors[obs_idx, :obs_idx + 1]):
-                for k2, p_prev_num_tables_equals_k2 in enumerate(num_table_posteriors[obs_idx - 1, :obs_idx + 1]):
-                    # advance number of tables by 1 if customer seating > number of current tables
-                    if k1 > k2 + 1:
-                        num_table_posteriors.data[obs_idx, k2 + 1] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
-                    # customer allocated to previous table
-                    elif k1 <= k2:
-                        num_table_posteriors.data[obs_idx, k2] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
-                    # create new table
-                    elif k1 == k2 + 1:
-                        num_table_posteriors.data[obs_idx, k1] += p_z_t_equals_k1 * p_prev_num_tables_equals_k2
-                    else:
-                        raise ValueError
-            assert torch.allclose(torch.sum(num_table_posteriors[obs_idx, :]), one_tensor)
+            unnormalized_table_assignment_posterior = torch.multiply(
+                likelihoods_per_latent.type(torch.float64),
+                table_assignment_prior)
+            table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
+                unnormalized_table_assignment_posterior)
 
             # apply local MAP approximation
             max_idx = torch.argmax(table_assignment_posterior)
@@ -454,7 +380,57 @@ def local_map(observations,
                 max_idx,
                 num_classes=table_assignment_posterior.shape[0]).double()
             assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
+
+            # record latent posterior
             table_assignment_posteriors[obs_idx, :obs_idx + 1] = table_assignment_posterior
+
+            # update running sum of posteriors
+            table_assignment_posteriors_running_sum[obs_idx, :] = torch.add(
+                table_assignment_posteriors_running_sum[obs_idx - 1, :],
+                table_assignment_posteriors[obs_idx, :])
+            assert torch.allclose(torch.sum(table_assignment_posteriors_running_sum[obs_idx, :]),
+                                  torch.Tensor([obs_idx + 1]).double())
+
+            # M step: update parameters
+            # Note: log likelihood is all we need for optimization because
+            # log p(x, z; params) = log p(x|z; params) + log p(z)
+            # and the second is constant w.r.t. params gradient
+            loss = torch.mean(log_likelihoods_per_latent)
+            loss.backward()
+
+            # instead of typical dynamics:
+            #       p_k <- p_k + (obs - p_k) / number of obs assigned to kth cluster
+            # we use the new dynamics
+            #       p_k <- p_k + posterior(obs belongs to kth cluster) * (obs - p_k) / total mass on kth cluster
+            # that effectively means the learning rate should be this scaled_prefactor
+            scaled_learning_rate = em_learning_rate * torch.divide(
+                table_assignment_posteriors[obs_idx, :],
+                table_assignment_posteriors_running_sum[obs_idx, :])
+            scaled_learning_rate[torch.isnan(scaled_learning_rate)] = 0.
+            scaled_learning_rate[torch.isinf(scaled_learning_rate)] = 0.
+
+            # don't update the newest cluster
+            scaled_learning_rate[obs_idx] = 0.
+
+            for param_descr, param_tensor in cluster_parameters.items():
+                # the scaled learning rate has shape (num latents,) aka (num obs,)
+                # we need to create extra dimensions of size 1 for broadcasting to work
+                # because param_tensor can have variable number of dimensions e.g. (num obs, obs dim)
+                # for mean vs (num obs, obs dim, obs dim) for covariance, we need to dynamically
+                # add the corect number of dimensions
+                reshaped_scaled_learning_rate = scaled_learning_rate.view(
+                    [scaled_learning_rate.shape[0]] + [1 for _ in range(len(param_tensor.shape[1:]))])
+                if param_tensor.grad is None:
+                    continue
+                else:
+                    scaled_param_tensor_grad = torch.multiply(
+                        reshaped_scaled_learning_rate,
+                        param_tensor.grad)
+                    param_tensor.data += scaled_param_tensor_grad
+                    assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
+
+            # update posterior over number of tables using posterior over customer seat
+            num_table_posteriors[obs_idx, torch.sum(table_assignment_posteriors_running_sum[obs_idx] != 0)] = 1.
 
     local_map_results = dict(
         table_assignment_priors=table_assignment_priors.detach().numpy(),
