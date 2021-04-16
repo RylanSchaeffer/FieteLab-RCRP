@@ -430,7 +430,7 @@ def local_map(observations,
                     assert_torch_no_nan_no_inf(param_tensor.data[:obs_idx + 1])
 
             # update posterior over number of tables using posterior over customer seat
-            num_table_posteriors[obs_idx, torch.sum(table_assignment_posteriors_running_sum[obs_idx] != 0)] = 1.
+            num_table_posteriors[obs_idx, torch.sum(table_assignment_posteriors_running_sum[obs_idx] != 0) - 1] = 1.
 
     local_map_results = dict(
         table_assignment_priors=table_assignment_priors.detach().numpy(),
