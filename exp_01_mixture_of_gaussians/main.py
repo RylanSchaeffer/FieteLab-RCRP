@@ -6,7 +6,6 @@ import utils.inference
 from exp_01_mixture_of_gaussians.plot import *
 
 from utils.data import sample_sequence_from_mixture_of_gaussians
-from utils.helpers import assert_numpy_no_nan_no_inf
 from utils.inference import bayesian_recursion
 from utils.inference_mix_of_gauss import dp_means_online, dp_means_offline, \
     sampling_hmc_gibbs, variational_bayes
@@ -18,11 +17,12 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
-    num_datasets = 2
+    num_datasets = 5
     inference_algs_results_by_dataset = {}
     sampled_mog_results_by_dataset = {}
     # generate lots of datasets and record performance
     for dataset_idx in range(num_datasets):
+        print(f'Dataset Index: {dataset_idx}')
         dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
         dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
 
@@ -66,14 +66,17 @@ def run_one_dataset(plot_dir,
         gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
                              gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
-    concentration_params = 1.01 + np.arange(0., 5.01, 0.25)
+    concentration_params = 0.01 + np.arange(0., 5.01,
+                                            # 1.,
+                                            0.25
+                                            )
 
     inference_alg_strs = [
-        # 'bayesian_recursion',
-        'local_map',
-        'dp_means_offline',
-        'dp_means_online',
-        'hmc_gibbs'
+        'bayesian_recursion',
+        'SUSG',
+        # 'dp_means_offline',
+        # 'dp_means_online',
+        # 'hmc_gibbs'
     ]
 
     inference_algs_results = {}
@@ -115,6 +118,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
                                inference_alg_str,
                                concentration_params,
                                plot_dir):
+
     inference_alg_plot_dir = os.path.join(plot_dir, inference_alg_str)
     os.makedirs(inference_alg_plot_dir, exist_ok=True)
     num_clusters_by_concentration_param = {}
@@ -122,8 +126,10 @@ def run_and_plot_inference_alg(sampled_mog_results,
 
     if inference_alg_str == 'bayesian_recursion':
         inference_alg_fn = utils.inference.bayesian_recursion
-    elif inference_alg_str == 'local_map':
-        inference_alg_fn = utils.inference.local_map
+    elif inference_alg_str == 'SUSG':
+        inference_alg_fn = utils.inference.sequential_updating_and_greedy_search
+    elif inference_alg_str == 'VSUSG':
+        inference_alg_fn = utils.inference.variational_sequential_updating_and_greedy_search
     elif inference_alg_str == 'dp_means_online':
         raise NotImplementedError
     elif inference_alg_str == 'dp_means_offline':
@@ -134,11 +140,12 @@ def run_and_plot_inference_alg(sampled_mog_results,
         raise ValueError
 
     for concentration_param in concentration_params:
+
         inference_alg_results = inference_alg_fn(
             observations=sampled_mog_results['gaussian_samples_seq'],
             concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
-            em_learning_rate=1e0)
+            learning_rate=1e0)
 
         # record scores
         scores, pred_cluster_labels = score_predicted_clusters(
@@ -152,7 +159,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=inference_alg_results,
-            inference_alg='bayesian_recursion_alpha={:.2f}'.format(concentration_param),
+            inference_alg_str='{}_alpha={:.2f}'.format(inference_alg_str, concentration_param),
             plot_dir=inference_alg_plot_dir)
 
         print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
@@ -177,7 +184,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results: dict,
             observations=sampled_mog_results['gaussian_samples_seq'],
             concentration_param=alpha,
             likelihood_model='multivariate_normal',
-            em_learning_rate=1e0,
+            learning_rate=1e0,
             # likelihood_fn=likelihood_fn,
             # update_parameters_fn=update_parameters_fn,
         )
@@ -194,7 +201,7 @@ def run_and_plot_bayesian_recursion(sampled_mog_results: dict,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=bayesian_recursion_results,
-            inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
+            inference_alg_str='bayesian_recursion_alpha={:.2f}'.format(alpha),
             plot_dir=bayesian_recursion_plot_dir)
 
         print('Finished Bayesian recursion alpha={:.2f}'.format(alpha))
@@ -232,7 +239,7 @@ def run_and_plot_dp_means_offline(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=dp_means_offline_results,
-            inference_alg='dp_means_online_lambda={:.2f}'.format(lambd),
+            inference_alg_str='dp_means_online_lambda={:.2f}'.format(lambd),
             plot_dir=dp_means_plot_dir)
 
         print('Finished DP-Means Offline lambda={:.2f}'.format(lambd))
@@ -268,7 +275,7 @@ def run_and_plot_dp_means_online(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=dp_means_online_results,
-            inference_alg='dp_means_online_lambda={:.2f}'.format(lambd),
+            inference_alg_str='dp_means_online_lambda={:.2f}'.format(lambd),
             plot_dir=dp_means_plot_dir)
 
         print('Finished DP-Means Online lambda={:.2f}'.format(lambd))
@@ -312,7 +319,7 @@ def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=sampling_hmc_gibbs_results,
-            inference_alg='hmc_gibbs={:.2f}'.format(alpha),
+            inference_alg_str='hmc_gibbs={:.2f}'.format(alpha),
             plot_dir=hmc_gibbs_sampling_plot_dir)
 
     sampling_hmc_gibbs_results = dict(
@@ -347,7 +354,7 @@ def run_and_plot_variational_bayes(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=variational_bayes_results,
-            inference_alg='variational_bayes={:.2f}'.format(alpha),
+            inference_alg_str='variational_bayes={:.2f}'.format(alpha),
             plot_dir=variational_plot_dir)
 
         print('Finished Variational Bayes alpha={:.2f}'.format(alpha))
