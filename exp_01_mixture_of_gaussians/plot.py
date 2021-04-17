@@ -14,6 +14,7 @@ def plot_inference_results(sampled_mog_results: dict,
                            concentration_param: float,
                            plot_dir,
                            num_tables_to_plot: int = 10):
+
     assert isinstance(num_tables_to_plot, int)
     assert num_tables_to_plot > 0
     # num_obs = sampled_mog_results['gaussian_samples_seq'].shape[0]

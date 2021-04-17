@@ -32,6 +32,8 @@ def main():
         inference_algs_results_by_dataset=inference_algs_results_by_dataset,
         sampled_mog_results_by_dataset=sampled_mog_results_by_dataset)
 
+    print('Successfully completed Exp 01 Mixture of Gaussians')
+
 
 def run_one_dataset(dataset_dir,
                     num_gaussians: int = 3,
