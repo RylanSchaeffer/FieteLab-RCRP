@@ -233,6 +233,204 @@ def bayesian_recursion(observations,
     return bayesian_recursion_results
 
 
+def beta(a, b):
+    result = torch.exp(log_beta(a, b))
+    return result
+
+
+def create_new_cluster_params_bernoulli(torch_observation,
+                                        obs_idx,
+                                        cluster_parameters):
+    # data is necessary to not break backprop
+    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
+    raise NotImplementedError
+
+
+def create_new_cluster_params_continuous_bernoulli(torch_observation,
+                                                   obs_idx,
+                                                   cluster_parameters):
+    # data is necessary to not break backprop
+    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
+    assert_torch_no_nan_no_inf(torch_observation)
+    torch_obs_as_logits = torch_probs_to_logits(torch_observation)
+    assert_torch_no_nan_no_inf(torch_obs_as_logits)
+    cluster_parameters['logits'].data[obs_idx, :] = torch_obs_as_logits
+    assert_torch_no_nan_no_inf(cluster_parameters['logits'].data[:obs_idx + 1])
+
+
+def create_new_cluster_params_dirichlet_multinomial(torch_observation,
+                                                    obs_idx,
+                                                    cluster_parameters):
+    # data is necessary to not break backprop
+    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
+    assert_torch_no_nan_no_inf(torch_observation)
+    epsilon = 10.
+    cluster_parameters['topics_concentrations'].data[obs_idx, :] = torch_observation + epsilon
+
+
+def create_new_cluster_params_multivariate_normal(torch_observation,
+                                                  obs_idx,
+                                                  cluster_parameters):
+    # data is necessary to not break backprop
+    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
+    assert_torch_no_nan_no_inf(torch_observation)
+    cluster_parameters['means'].data[obs_idx, :] = torch_observation
+    cluster_parameters['stddevs'].data[obs_idx, :, :] = torch.eye(torch_observation.shape[0])
+
+
+def likelihood_continuous_bernoulli(torch_observation,
+                                    obs_idx,
+                                    cluster_parameters):
+    cont_bern = torch.distributions.ContinuousBernoulli(
+        logits=cluster_parameters['logits'][:obs_idx + 1])
+    log_likelihoods_per_latent_per_obs_dim = cont_bern.log_prob(value=torch_observation)
+    likelihoods_per_latent_per_obs_dim = torch.exp(log_likelihoods_per_latent_per_obs_dim)
+
+    # compute Continuous Bernoulli likelihoods
+    # normalizing_const = torch.divide(
+    #     2. * torch.arctanh(1. - 2. * logits[:obs_idx+1]),
+    #     1. - 2. * logits[:obs_idx+1])
+    # normalizing_const[torch.isnan(normalizing_const)] = 2.
+    # likelihoods_per_latent_per_obs_dim = torch.multiply(
+    #     normalizing_const,
+    #     torch.multiply(
+    #         torch.pow(logits[:obs_idx + 1], torch_observation),
+    #         torch.pow(1. - logits[:obs_idx + 1], 1. - torch_observation)))
+
+    likelihoods_per_latent = torch.prod(likelihoods_per_latent_per_obs_dim, dim=1)
+    log_likelihoods_per_latent = torch.sum(log_likelihoods_per_latent_per_obs_dim, dim=1)
+
+    return likelihoods_per_latent, log_likelihoods_per_latent
+
+
+def likelihood_dirichlet_multinomial(torch_observation,
+                                     obs_idx,
+                                     cluster_parameters):
+    # Approach 1: Multinomial-Dirichlet
+    words_in_doc = torch.sum(torch_observation)
+    # previous version, copied from numpy
+    # log_numerator = torch.log(words_in_doc) + torch.log(scipy.special.beta(
+    #     torch.sum(cluster_parameters['topics_concentrations'], axis=1),
+    #     words_in_doc))
+    total_concentrations_per_latent = torch.sum(
+        cluster_parameters['topics_concentrations'][:obs_idx + 1],
+        dim=1)
+    # compute the log Beta using defn of Beta(a,b)=Gamma(a)*Gamma(b)/Gamma(a+b)
+    log_numerator = torch.log(words_in_doc) \
+                    + log_beta(a=total_concentrations_per_latent, b=words_in_doc)
+
+    # shape (doc idx, vocab size)
+    log_beta_terms = log_beta(
+        a=cluster_parameters['topics_concentrations'][:obs_idx + 1],
+        b=torch_observation,
+    )
+    log_x_times_beta_terms = torch.add(
+        log_beta_terms,
+        torch.log(torch_observation))
+    # beta numerically can create infs if x is 0, even though 0*Beta(., 0) should be 0
+    # consequently, filter these out by setting equal to 0
+    log_x_times_beta_terms[torch.isnan(log_x_times_beta_terms)] = 0.
+    # shape (max num latents, )
+    log_denominator = torch.sum(log_x_times_beta_terms, dim=1)
+    assert_torch_no_nan_no_inf(log_denominator)
+    log_likelihoods_per_latent = log_numerator - log_denominator
+    assert_torch_no_nan_no_inf(log_likelihoods_per_latent)
+    likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
+
+    return likelihoods_per_latent, log_likelihoods_per_latent
+
+
+def likelihood_discrete_bernoulli(torch_observation,
+                                  obs_idx,
+                                  cluster_parameters):
+    raise NotImplementedError
+    # return likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim
+
+
+def likelihood_multivariate_normal(torch_observation,
+                                   obs_idx,
+                                   cluster_parameters):
+    # TODO: figure out how to do gradient descent using the post-grad step means
+    # covariances = torch.stack([
+    #     torch.matmul(stddev, stddev.T) for stddev in cluster_parameters['stddevs']])
+    #
+    obs_dim = torch_observation.shape[0]
+    covariances = torch.stack([torch.matmul(torch.eye(obs_dim), torch.eye(obs_dim).T)
+                               for stddev in cluster_parameters['stddevs']]).double()
+
+    mv_normal = torch.distributions.multivariate_normal.MultivariateNormal(
+        loc=cluster_parameters['means'][:obs_idx + 1],
+        covariance_matrix=covariances[:obs_idx + 1],
+        # scale_tril=cluster_parameters['stddevs'][:obs_idx + 1],
+    )
+    log_likelihoods_per_latent = mv_normal.log_prob(value=torch_observation)
+    likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
+    return likelihoods_per_latent, log_likelihoods_per_latent
+
+
+def log_beta(a, b):
+    log_gamma_a = torch.lgamma(a)
+    log_gamma_b = torch.lgamma(b)
+    log_gamma_a_plus_b = torch.lgamma(a + b)
+    result = log_gamma_a + log_gamma_b - log_gamma_a_plus_b
+    return result
+
+
+def run_inference_alg(inference_alg_str,
+                      observations,
+                      concentration_param,
+                      likelihood_model,
+                      learning_rate):
+
+    if inference_alg_str == 'bayesian_recursion':
+        inference_alg_fn = bayesian_recursion
+    elif inference_alg_str == 'SUSG':
+        inference_alg_fn = sequential_updating_and_greedy_search
+    elif inference_alg_str == 'VSUSG':
+        inference_alg_fn = variational_sequential_updating_and_greedy_search
+    elif inference_alg_str == 'dp_means_online':
+        # inference_alg_fn = dp_means
+        # dp_means_online_results = run_and_plot_dp_means_online(
+        #     sampled_mog_results=sampled_mog_results,
+        #     plot_dir=plot_dir)
+        inference_alg_kwargs = dict(
+            num_passes=1,
+        )
+        raise NotImplementedError
+    elif inference_alg_str == 'dp_means_offline':
+        inference_alg_kwargs = dict(
+            num_passes=8,
+        )
+        raise NotImplementedError
+    elif inference_alg_str == 'hmc_gibbs':
+        # hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
+        #     sampled_mog_results=sampled_mog_results,
+        #     plot_dir=plot_dir,
+        #     gaussian_cov_scaling=gaussian_cov_scaling,
+        #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
+        #     num_samples=5000)
+        inference_alg_kwargs = dict(
+            num_samples=5000,
+        )
+        raise NotImplementedError
+    elif inference_alg_str == 'SVI':
+        # variational_bayes_results = run_and_plot_variational_bayes(
+        #     sampled_mog_results=sampled_mog_results,
+        #     plot_dir=plot_dir)
+        raise NotImplementedError
+    else:
+        raise ValueError
+
+    # run inference algorithm
+    inference_alg_results = inference_alg_fn(
+        observations=observations,
+        concentration_param=concentration_param,
+        likelihood_model=likelihood_model,
+        learning_rate=learning_rate)
+
+    return inference_alg_results
+
+
 def sequential_updating_and_greedy_search(observations,
                                           concentration_param: float,
                                           likelihood_model: str,
@@ -452,145 +650,3 @@ def variational_sequential_updating_and_greedy_search(observations,
     # Nott, Zhang, Yau and Jasra (2013)
     raise NotImplementedError
 
-
-def create_new_cluster_params_bernoulli(torch_observation,
-                                        obs_idx,
-                                        cluster_parameters):
-    # data is necessary to not break backprop
-    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
-    raise NotImplementedError
-
-
-def create_new_cluster_params_continuous_bernoulli(torch_observation,
-                                                   obs_idx,
-                                                   cluster_parameters):
-    # data is necessary to not break backprop
-    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
-    assert_torch_no_nan_no_inf(torch_observation)
-    torch_obs_as_logits = torch_probs_to_logits(torch_observation)
-    assert_torch_no_nan_no_inf(torch_obs_as_logits)
-    cluster_parameters['logits'].data[obs_idx, :] = torch_obs_as_logits
-    assert_torch_no_nan_no_inf(cluster_parameters['logits'].data[:obs_idx + 1])
-
-
-def create_new_cluster_params_dirichlet_multinomial(torch_observation,
-                                                    obs_idx,
-                                                    cluster_parameters):
-    # data is necessary to not break backprop
-    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
-    assert_torch_no_nan_no_inf(torch_observation)
-    epsilon = 10.
-    cluster_parameters['topics_concentrations'].data[obs_idx, :] = torch_observation + epsilon
-
-
-def create_new_cluster_params_multivariate_normal(torch_observation,
-                                                  obs_idx,
-                                                  cluster_parameters):
-    # data is necessary to not break backprop
-    # see https://stackoverflow.com/questions/53819383/how-to-assign-a-new-value-to-a-pytorch-variable-without-breaking-backpropagation
-    assert_torch_no_nan_no_inf(torch_observation)
-    cluster_parameters['means'].data[obs_idx, :] = torch_observation
-    cluster_parameters['stddevs'].data[obs_idx, :, :] = torch.eye(torch_observation.shape[0])
-
-
-def likelihood_continuous_bernoulli(torch_observation,
-                                    obs_idx,
-                                    cluster_parameters):
-    cont_bern = torch.distributions.ContinuousBernoulli(
-        logits=cluster_parameters['logits'][:obs_idx + 1])
-    log_likelihoods_per_latent_per_obs_dim = cont_bern.log_prob(value=torch_observation)
-    likelihoods_per_latent_per_obs_dim = torch.exp(log_likelihoods_per_latent_per_obs_dim)
-
-    # compute Continuous Bernoulli likelihoods
-    # normalizing_const = torch.divide(
-    #     2. * torch.arctanh(1. - 2. * logits[:obs_idx+1]),
-    #     1. - 2. * logits[:obs_idx+1])
-    # normalizing_const[torch.isnan(normalizing_const)] = 2.
-    # likelihoods_per_latent_per_obs_dim = torch.multiply(
-    #     normalizing_const,
-    #     torch.multiply(
-    #         torch.pow(logits[:obs_idx + 1], torch_observation),
-    #         torch.pow(1. - logits[:obs_idx + 1], 1. - torch_observation)))
-
-    likelihoods_per_latent = torch.prod(likelihoods_per_latent_per_obs_dim, dim=1)
-    log_likelihoods_per_latent = torch.sum(log_likelihoods_per_latent_per_obs_dim, dim=1)
-
-    return likelihoods_per_latent, log_likelihoods_per_latent
-
-
-def likelihood_dirichlet_multinomial(torch_observation,
-                                     obs_idx,
-                                     cluster_parameters):
-    # Approach 1: Multinomial-Dirichlet
-    words_in_doc = torch.sum(torch_observation)
-    # previous version, copied from numpy
-    # log_numerator = torch.log(words_in_doc) + torch.log(scipy.special.beta(
-    #     torch.sum(cluster_parameters['topics_concentrations'], axis=1),
-    #     words_in_doc))
-    total_concentrations_per_latent = torch.sum(
-        cluster_parameters['topics_concentrations'][:obs_idx + 1],
-        dim=1)
-    # compute the log Beta using defn of Beta(a,b)=Gamma(a)*Gamma(b)/Gamma(a+b)
-    log_numerator = torch.log(words_in_doc) \
-                    + log_beta(a=total_concentrations_per_latent, b=words_in_doc)
-
-    # shape (doc idx, vocab size)
-    log_beta_terms = log_beta(
-        a=cluster_parameters['topics_concentrations'][:obs_idx + 1],
-        b=torch_observation,
-    )
-    log_x_times_beta_terms = torch.add(
-        log_beta_terms,
-        torch.log(torch_observation))
-    # beta numerically can create infs if x is 0, even though 0*Beta(., 0) should be 0
-    # consequently, filter these out by setting equal to 0
-    log_x_times_beta_terms[torch.isnan(log_x_times_beta_terms)] = 0.
-    # shape (max num latents, )
-    log_denominator = torch.sum(log_x_times_beta_terms, dim=1)
-    assert_torch_no_nan_no_inf(log_denominator)
-    log_likelihoods_per_latent = log_numerator - log_denominator
-    assert_torch_no_nan_no_inf(log_likelihoods_per_latent)
-    likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
-
-    return likelihoods_per_latent, log_likelihoods_per_latent
-
-
-def likelihood_discrete_bernoulli(torch_observation,
-                                  obs_idx,
-                                  cluster_parameters):
-    raise NotImplementedError
-    # return likelihoods_per_latent_per_obs_dim, log_likelihoods_per_latent_per_obs_dim
-
-
-def likelihood_multivariate_normal(torch_observation,
-                                   obs_idx,
-                                   cluster_parameters):
-    # TODO: figure out how to do gradient descent using the post-grad step means
-    # covariances = torch.stack([
-    #     torch.matmul(stddev, stddev.T) for stddev in cluster_parameters['stddevs']])
-    #
-    obs_dim = torch_observation.shape[0]
-    covariances = torch.stack([torch.matmul(torch.eye(obs_dim), torch.eye(obs_dim).T)
-                               for stddev in cluster_parameters['stddevs']]).double()
-
-    mv_normal = torch.distributions.multivariate_normal.MultivariateNormal(
-        loc=cluster_parameters['means'][:obs_idx + 1],
-        covariance_matrix=covariances[:obs_idx + 1],
-        # scale_tril=cluster_parameters['stddevs'][:obs_idx + 1],
-    )
-    log_likelihoods_per_latent = mv_normal.log_prob(value=torch_observation)
-    likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
-    return likelihoods_per_latent, log_likelihoods_per_latent
-
-
-def log_beta(a, b):
-    log_gamma_a = torch.lgamma(a)
-    log_gamma_b = torch.lgamma(b)
-    log_gamma_a_plus_b = torch.lgamma(a + b)
-    result = log_gamma_a + log_gamma_b - log_gamma_a_plus_b
-    return result
-
-
-def beta(a, b):
-    result = torch.exp(log_beta(a, b))
-    return result

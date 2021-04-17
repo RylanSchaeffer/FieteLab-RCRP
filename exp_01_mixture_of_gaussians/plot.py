@@ -7,7 +7,8 @@ import seaborn as sns
 
 def plot_inference_results(sampled_mog_results: dict,
                            inference_results: dict,
-                           inference_alg: str,
+                           inference_alg_str: str,
+                           concentration_param: float,
                            plot_dir,
                            num_tables_to_plot: int = 10):
     assert isinstance(num_tables_to_plot, int)
@@ -62,7 +63,8 @@ def plot_inference_results(sampled_mog_results: dict,
     ax.set_ylim(ymin=ymin, ymax=ymax)
     ax.set_title(r'Predicted Cluster Labels')
 
-    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_clusters.png'),
+    plt.savefig(os.path.join(plot_dir,
+                             '{}_alpha={:.2f}_pred_clusters.png'.format(inference_alg_str, concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()
@@ -104,7 +106,9 @@ def plot_inference_results(sampled_mog_results: dict,
     ax.set_ylabel('Observation Index')
     ax.set_xlabel('Cluster Index')
 
-    plt.savefig(os.path.join(plot_dir, f'{inference_alg}_pred_assignments.png'),
+    plt.savefig(os.path.join(plot_dir,
+                             '{}_alpha={:.2f}_pred_assignments.png'.format(inference_alg_str,
+                                                                           concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
     # plt.show()

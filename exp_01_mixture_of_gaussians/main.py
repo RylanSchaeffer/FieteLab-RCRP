@@ -1,3 +1,5 @@
+import ossaudiodev
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -20,32 +22,17 @@ def main():
     num_datasets = 5
     inference_algs_results_by_dataset = {}
     sampled_mog_results_by_dataset = {}
-    # generate lots of datasets and record performance
+
+    # generate lots of datasets and record performance for each
     for dataset_idx in range(num_datasets):
         print(f'Dataset Index: {dataset_idx}')
         dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
-        dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
+        os.makedirs(dataset_dir, exist_ok=True)
+        dataset_inference_algs_results, dataset_sampled_mog_results = run_one_dataset(
+            dataset_dir=dataset_dir)
 
-        if os.path.isfile(dataset_results_path):
-            # load from disk if exists
-            dataset_results = joblib.load(dataset_results_path)
-        else:
-            # otherwise, generate anew
-            dataset_inference_algs_results, dataset_sampled_mog_results = \
-                run_one_dataset(plot_dir=dataset_dir)
-            dataset_results = dict(
-                dataset_inference_algs_results=dataset_inference_algs_results,
-                dataset_sampled_mog_results=dataset_sampled_mog_results,
-            )
-            joblib.dump(dataset_results, dataset_results_path)
-
-            # delete variables from memory and perform fresh read from disk
-            del dataset_inference_algs_results, dataset_sampled_mog_results
-            del dataset_results
-            dataset_results = joblib.load(dataset_results_path)
-
-        inference_algs_results_by_dataset[dataset_idx] = dataset_results['dataset_inference_algs_results']
-        sampled_mog_results_by_dataset[dataset_idx] = dataset_results['dataset_sampled_mog_results']
+        inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
+        sampled_mog_results_by_dataset[dataset_idx] = dataset_sampled_mog_results
 
     plot_inference_algs_comparison(
         plot_dir=plot_dir,
@@ -53,10 +40,11 @@ def main():
         sampled_mog_results_by_dataset=sampled_mog_results_by_dataset)
 
 
-def run_one_dataset(plot_dir,
+def run_one_dataset(dataset_dir,
                     num_gaussians: int = 3,
                     gaussian_cov_scaling: float = 0.3,
                     gaussian_mean_prior_cov_scaling: float = 6.):
+
     # sample data
     sampled_mog_results = sample_sequence_from_mixture_of_gaussians(
         seq_len=100,
@@ -67,8 +55,8 @@ def run_one_dataset(plot_dir,
                              gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
     concentration_params = 0.01 + np.arange(0., 5.01,
-                                            # 1.,
-                                            0.25
+                                            1.,
+                                            # 0.25
                                             )
 
     inference_alg_strs = [
@@ -80,36 +68,27 @@ def run_one_dataset(plot_dir,
     ]
 
     inference_algs_results = {}
-
     for inference_alg_str in inference_alg_strs:
-        inference_alg_result = run_and_plot_inference_alg(
-            sampled_mog_results=sampled_mog_results,
-            inference_alg_str=inference_alg_str,
-            concentration_params=concentration_params,
-            plot_dir=plot_dir)
-        inference_algs_results[inference_alg_str] = inference_alg_result
 
-    # dp_means_online_results = run_and_plot_dp_means_online(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir)
-    #
-    # hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir,
-    #     gaussian_cov_scaling=gaussian_cov_scaling,
-    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-    #     num_samples=5000)
-    #
-    # hmc_gibbs_20000_samples_results = run_and_plot_hmc_gibbs_sampling(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir,
-    #     gaussian_cov_scaling=gaussian_cov_scaling,
-    #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-    #     num_samples=20000)
-    #
-    # variational_bayes_results = run_and_plot_variational_bayes(
-    #     sampled_mog_results=sampled_mog_results,
-    #     plot_dir=plot_dir)
+        inference_alg_dir = os.path.join(dataset_dir, inference_alg_str)
+        os.makedirs(inference_alg_dir, exist_ok=True)
+        inference_alg_results_path = os.path.join(inference_alg_dir, 'results.joblib')
+
+        # if results do not exist, generate
+        if not os.path.isfile(inference_alg_results_path):
+            inference_alg_results = run_and_plot_inference_alg(
+                sampled_mog_results=sampled_mog_results,
+                inference_alg_str=inference_alg_str,
+                concentration_params=concentration_params,
+                plot_dir=dataset_dir)
+
+            # write to disk and delete
+            joblib.dump(inference_alg_results, filename=inference_alg_results_path)
+            del inference_alg_results
+
+        # read results from disk
+        inference_alg_results = joblib.load(inference_alg_results_path)
+        inference_algs_results[inference_alg_str] = inference_alg_results
 
     return inference_algs_results, sampled_mog_results
 
@@ -124,24 +103,11 @@ def run_and_plot_inference_alg(sampled_mog_results,
     num_clusters_by_concentration_param = {}
     scores_by_concentration_param = {}
 
-    if inference_alg_str == 'bayesian_recursion':
-        inference_alg_fn = utils.inference.bayesian_recursion
-    elif inference_alg_str == 'SUSG':
-        inference_alg_fn = utils.inference.sequential_updating_and_greedy_search
-    elif inference_alg_str == 'VSUSG':
-        inference_alg_fn = utils.inference.variational_sequential_updating_and_greedy_search
-    elif inference_alg_str == 'dp_means_online':
-        raise NotImplementedError
-    elif inference_alg_str == 'dp_means_offline':
-        raise NotImplementedError
-    elif inference_alg_str == 'hmc_gibbs':
-        raise NotImplementedError
-    else:
-        raise ValueError
-
     for concentration_param in concentration_params:
 
-        inference_alg_results = inference_alg_fn(
+        # run inference algorithm
+        inference_alg_results = utils.inference.run_inference_alg(
+            inference_alg_str=inference_alg_str,
             observations=sampled_mog_results['gaussian_samples_seq'],
             concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
@@ -159,7 +125,8 @@ def run_and_plot_inference_alg(sampled_mog_results,
         plot_inference_results(
             sampled_mog_results=sampled_mog_results,
             inference_results=inference_alg_results,
-            inference_alg_str='{}_alpha={:.2f}'.format(inference_alg_str, concentration_param),
+            inference_alg_str=inference_alg_str,
+            concentration_param=concentration_param,
             plot_dir=inference_alg_plot_dir)
 
         print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
@@ -170,201 +137,6 @@ def run_and_plot_inference_alg(sampled_mog_results,
     )
 
     return inference_alg_results
-
-
-def run_and_plot_bayesian_recursion(sampled_mog_results: dict,
-                                    plot_dir):
-    alphas = 0.01 + np.arange(0., 5.01, 0.25)
-    bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
-    os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
-    num_clusters_by_alpha = {}
-    scores_by_alpha = {}
-    for alpha in alphas:
-        bayesian_recursion_results = bayesian_recursion(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            concentration_param=alpha,
-            likelihood_model='multivariate_normal',
-            learning_rate=1e0,
-            # likelihood_fn=likelihood_fn,
-            # update_parameters_fn=update_parameters_fn,
-        )
-
-        # record scores
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
-        scores_by_alpha[alpha] = scores
-
-        # count number of clusters
-        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=bayesian_recursion_results,
-            inference_alg_str='bayesian_recursion_alpha={:.2f}'.format(alpha),
-            plot_dir=bayesian_recursion_plot_dir)
-
-        print('Finished Bayesian recursion alpha={:.2f}'.format(alpha))
-
-    bayesian_recursion_results = dict(
-        num_clusters_by_param=num_clusters_by_alpha,
-        scores_by_param=pd.DataFrame(scores_by_alpha).T,
-    )
-
-    return bayesian_recursion_results
-
-
-def run_and_plot_dp_means_offline(sampled_mog_results,
-                                  plot_dir):
-    lambdas = 0.01 + np.arange(0., 5.01, 0.25)
-    dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_offline')
-    os.makedirs(dp_means_plot_dir, exist_ok=True)
-    num_clusters_by_lambda = {}
-    scores_by_lambda = {}
-    for lambd in lambdas:
-        dp_means_offline_results = dp_means_offline(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            num_passes=8,
-            lambd=lambd)
-
-        # score clusters
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=dp_means_offline_results['table_assignment_posteriors'])
-        scores_by_lambda[lambd] = scores
-
-        # count number of clusters
-        num_clusters_by_lambda[lambd] = len(np.unique(pred_cluster_labels))
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=dp_means_offline_results,
-            inference_alg_str='dp_means_online_lambda={:.2f}'.format(lambd),
-            plot_dir=dp_means_plot_dir)
-
-        print('Finished DP-Means Offline lambda={:.2f}'.format(lambd))
-
-    dp_means_offline_results = dict(
-        num_clusters_by_param=num_clusters_by_lambda,
-        scores_by_param=pd.DataFrame(scores_by_lambda).T,
-    )
-    return dp_means_offline_results
-
-
-def run_and_plot_dp_means_online(sampled_mog_results,
-                                 plot_dir):
-    lambdas = 0.01 + np.arange(0., 5.01, 0.25)
-    dp_means_plot_dir = os.path.join(plot_dir, 'dp_means_online')
-    os.makedirs(dp_means_plot_dir, exist_ok=True)
-    num_clusters_by_lambda = {}
-    scores_by_lambda = {}
-    for lambd in lambdas:
-        dp_means_online_results = dp_means_online(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            lambd=lambd)
-
-        # score clusters
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=dp_means_online_results['table_assignment_posteriors'])
-        scores_by_lambda[lambd] = scores
-
-        # count number of clusters
-        num_clusters_by_lambda[lambd] = len(np.unique(pred_cluster_labels))
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=dp_means_online_results,
-            inference_alg_str='dp_means_online_lambda={:.2f}'.format(lambd),
-            plot_dir=dp_means_plot_dir)
-
-        print('Finished DP-Means Online lambda={:.2f}'.format(lambd))
-
-    dp_means_online_results = dict(
-        num_clusters_by_param=num_clusters_by_lambda,
-        scores_by_param=pd.DataFrame(scores_by_lambda).T,
-    )
-
-    return dp_means_online_results
-
-
-def run_and_plot_hmc_gibbs_sampling(sampled_mog_results,
-                                    plot_dir,
-                                    gaussian_cov_scaling,
-                                    gaussian_mean_prior_cov_scaling,
-                                    num_samples: int = 5000):
-    hmc_gibbs_sampling_plot_dir = os.path.join(plot_dir,
-                                               f'hmc_gibbs_sampling_nsamples={num_samples}')
-    os.makedirs(hmc_gibbs_sampling_plot_dir, exist_ok=True)
-    num_clusters_by_alpha = {}
-    scores_by_alpha = {}
-    alphas = np.arange(0.01, 5.01, 0.25)
-    for alpha in alphas:
-        sampling_hmc_gibbs_results = sampling_hmc_gibbs(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            num_samples=num_samples,
-            alpha=alpha,
-            gaussian_cov_scaling=gaussian_cov_scaling,
-            gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling)
-
-        # # score clusters
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=sampling_hmc_gibbs_results['table_assignment_posteriors'])
-        scores_by_alpha[alpha] = scores
-
-        # count number of clusters
-        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=sampling_hmc_gibbs_results,
-            inference_alg_str='hmc_gibbs={:.2f}'.format(alpha),
-            plot_dir=hmc_gibbs_sampling_plot_dir)
-
-    sampling_hmc_gibbs_results = dict(
-        num_clusters_by_param=num_clusters_by_alpha,
-        scores_by_param=pd.DataFrame(scores_by_alpha).T
-    )
-
-    return sampling_hmc_gibbs_results
-
-
-def run_and_plot_variational_bayes(sampled_mog_results,
-                                   plot_dir):
-    alphas = 0.01 + np.arange(0., 5.01, 0.25)
-    variational_plot_dir = os.path.join(plot_dir, 'variational')
-    os.makedirs(variational_plot_dir, exist_ok=True)
-    num_clusters_by_alpha = {}
-    scores_by_alpha = {}
-    for alpha in alphas:
-        variational_bayes_results = variational_bayes(
-            observations=sampled_mog_results['gaussian_samples_seq'],
-            alpha=alpha)
-
-        # score clusters
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=sampled_mog_results['assigned_table_seq'],
-            table_assignment_posteriors=variational_bayes_results['table_assignment_posteriors'])
-        scores_by_alpha[alpha] = scores
-
-        # count number of clusters
-        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=variational_bayes_results,
-            inference_alg_str='variational_bayes={:.2f}'.format(alpha),
-            plot_dir=variational_plot_dir)
-
-        print('Finished Variational Bayes alpha={:.2f}'.format(alpha))
-
-    variational_bayes_results = dict(
-        num_clusters_by_param=num_clusters_by_alpha,
-        scores_by_param=pd.DataFrame(scores_by_alpha).T,
-    )
-
-    return variational_bayes_results
 
 
 if __name__ == '__main__':
