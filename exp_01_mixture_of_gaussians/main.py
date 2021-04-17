@@ -1,17 +1,10 @@
-import ossaudiodev
-
 import joblib
-import numpy as np
-import pandas as pd
+import os
 
-import utils.inference
 from exp_01_mixture_of_gaussians.plot import *
-
-from utils.data import sample_sequence_from_mixture_of_gaussians
-from utils.inference import bayesian_recursion
-from utils.inference_mix_of_gauss import dp_means_online, dp_means_offline, \
-    sampling_hmc_gibbs, variational_bayes
-from utils.metrics import score_predicted_clusters
+import utils.data
+import utils.inference
+import utils.metrics
 
 
 def main():
@@ -46,7 +39,7 @@ def run_one_dataset(dataset_dir,
                     gaussian_mean_prior_cov_scaling: float = 6.):
 
     # sample data
-    sampled_mog_results = sample_sequence_from_mixture_of_gaussians(
+    sampled_mog_results = utils.data.sample_sequence_from_mixture_of_gaussians(
         seq_len=100,
         class_sampling='Uniform',
         alpha=None,
@@ -60,11 +53,15 @@ def run_one_dataset(dataset_dir,
                                             )
 
     inference_alg_strs = [
-        'bayesian_recursion',
+        # online algorithms
+        'R-CRP',
         'SUSG',
-        # 'dp_means_offline',
-        # 'dp_means_online',
-        # 'hmc_gibbs'
+        'DP-Means (online)',
+        # offline algorithms
+        # 'DP-Means (offline)',
+        # 'HMC-Gibbs',
+        # 'SVI',
+        # 'Variational Bayes',
     ]
 
     inference_algs_results = {}
@@ -114,7 +111,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
             learning_rate=1e0)
 
         # record scores
-        scores, pred_cluster_labels = score_predicted_clusters(
+        scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
             true_cluster_labels=sampled_mog_results['assigned_table_seq'],
             table_assignment_posteriors=inference_alg_results['table_assignment_posteriors'])
         scores_by_concentration_param[concentration_param] = scores

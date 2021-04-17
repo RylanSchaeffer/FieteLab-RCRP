@@ -1,6 +1,12 @@
+from jax import random
+import jax.numpy as jnp
 import numpy as np
+import numpyro
+import numpyro.infer
+import numpyro.distributions
 import scipy
 import scipy.special
+import sklearn.mixture
 import torch
 import torch.distributions
 import torch.nn
@@ -9,11 +15,13 @@ import torch.optim
 
 from utils.helpers import assert_torch_no_nan_no_inf, torch_logits_to_probs, torch_probs_to_logits
 
+torch.set_default_tensor_type('torch.DoubleTensor')
+
 
 def bayesian_recursion(observations,
                        concentration_param: float,
                        likelihood_model: str,
-                       learning_rate: float = 1e2,
+                       learning_rate,
                        num_em_steps: int = 3):
     assert concentration_param > 0
     assert likelihood_model in {'multivariate_normal', 'dirichlet_multinomial',
@@ -278,6 +286,84 @@ def create_new_cluster_params_multivariate_normal(torch_observation,
     cluster_parameters['stddevs'].data[obs_idx, :, :] = torch.eye(torch_observation.shape[0])
 
 
+def dp_means(observations,
+             concentration_param: float,
+             likelihood_model: str,
+             learning_rate: float,
+             num_passes: int):
+    # if num_passes = 1, then this is "online."
+    # if num_passes > 1, then this if "offline"
+    assert concentration_param > 0
+    assert isinstance(num_passes, int)
+    assert num_passes > 0
+
+    # set learning rate to 0; unused
+    learning_rate = 0
+
+    # dimensionality of points
+    num_obs, obs_dim = observations.shape
+    max_num_clusters = num_obs
+    num_clusters = 1
+
+    # centroids of clusters
+    means = np.zeros(shape=(max_num_clusters, obs_dim))
+
+    # initial cluster = first data point
+    means[0, :] = observations[0, :]
+
+    # empirical online classification labels
+    table_assignments = np.zeros((max_num_clusters, max_num_clusters))
+    table_assignments[0, 0] = 1
+
+    for pass_idx in range(num_passes):
+        for obs_idx in range(1, len(observations)):
+
+            # compute distance of new sample from previous centroids:
+            distances = np.linalg.norm(observations[obs_idx, :] - means[:num_clusters, :],
+                                       axis=1)
+            assert len(distances) == num_clusters
+
+            # if smallest distance greater than cutoff concentration_param, create new cluster:
+            if np.min(distances) > concentration_param:
+
+                # increment number of clusters by 1:
+                num_clusters += 1
+
+                # centroid of new cluster = new sample
+                means[num_clusters - 1, :] = observations[obs_idx, :]
+                table_assignments[obs_idx, num_clusters - 1] = 1.
+
+            else:
+
+                # If the smallest distance is less than the cutoff concentration_param, assign point
+                # to one of the older clusters
+                assigned_cluster = np.argmin(distances)
+                table_assignments[obs_idx, assigned_cluster] = 1.
+
+        for cluster_idx in range(num_clusters):
+            # get indices of all observations assigned to that cluster:
+            indices_of_points_in_assigned_cluster = table_assignments[:, cluster_idx] == 1
+
+            # get observations assigned to that cluster
+            points_in_assigned_cluster = observations[indices_of_points_in_assigned_cluster, :]
+
+            assert points_in_assigned_cluster.shape[0] >= 1
+
+            # recompute centroid incorporating this new sample
+            means[cluster_idx, :] = np.mean(points_in_assigned_cluster,
+                                            axis=0)
+
+    table_assignment_posteriors_running_sum = np.cumsum(np.copy(table_assignments), axis=0)
+
+    # returns classes assigned and centroids of corresponding classes
+    dp_means_offline_results = dict(
+        table_assignment_posteriors=table_assignments,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=dict(means=means),
+    )
+    return dp_means_offline_results
+
+
 def likelihood_continuous_bernoulli(torch_observation,
                                     obs_idx,
                                     cluster_parameters):
@@ -381,43 +467,38 @@ def run_inference_alg(inference_alg_str,
                       concentration_param,
                       likelihood_model,
                       learning_rate):
+    # allow algorithm-specific arguments to inference alg function
+    inference_alg_kwargs = dict()
 
-    if inference_alg_str == 'bayesian_recursion':
+    # select inference alg and add kwargs as necessary
+    if inference_alg_str == 'R-CRP':
         inference_alg_fn = bayesian_recursion
     elif inference_alg_str == 'SUSG':
         inference_alg_fn = sequential_updating_and_greedy_search
     elif inference_alg_str == 'VSUSG':
         inference_alg_fn = variational_sequential_updating_and_greedy_search
-    elif inference_alg_str == 'dp_means_online':
-        # inference_alg_fn = dp_means
-        # dp_means_online_results = run_and_plot_dp_means_online(
-        #     sampled_mog_results=sampled_mog_results,
-        #     plot_dir=plot_dir)
-        inference_alg_kwargs = dict(
-            num_passes=1,
-        )
-        raise NotImplementedError
-    elif inference_alg_str == 'dp_means_offline':
-        inference_alg_kwargs = dict(
-            num_passes=8,
-        )
-        raise NotImplementedError
-    elif inference_alg_str == 'hmc_gibbs':
-        # hmc_gibbs_5000_samples_results = run_and_plot_hmc_gibbs_sampling(
-        #     sampled_mog_results=sampled_mog_results,
-        #     plot_dir=plot_dir,
+    elif inference_alg_str.startswith('DP-Means'):
+        inference_alg_fn = dp_means
+        if inference_alg_str.endswith('(offline)'):
+            inference_alg_kwargs['num_passes'] = 8  # same as Kulis and Jordan
+        elif inference_alg_str.endswith('(online)'):
+            inference_alg_kwargs['num_passes'] = 1
+        else:
+            raise ValueError('Invalid DP Means')
+    elif inference_alg_str.startswith('hmc_gibbs'):
         #     gaussian_cov_scaling=gaussian_cov_scaling,
         #     gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling,
-        #     num_samples=5000)
-        inference_alg_kwargs = dict(
-            num_samples=5000,
-        )
-        raise NotImplementedError
+        inference_alg_fn = sampling_hmc_gibbs
+        inference_alg_kwargs['num_samples'] = 5000
     elif inference_alg_str == 'SVI':
         # variational_bayes_results = run_and_plot_variational_bayes(
         #     sampled_mog_results=sampled_mog_results,
         #     plot_dir=plot_dir)
         raise NotImplementedError
+    elif inference_alg_str == 'Variational Bayes':
+        inference_alg_fn = variational_bayes
+        inference_alg_kwargs['max_iter'] = 8  # same as DP-Means
+        inference_alg_kwargs['num_initializations'] = 1
     else:
         raise ValueError
 
@@ -426,15 +507,90 @@ def run_inference_alg(inference_alg_str,
         observations=observations,
         concentration_param=concentration_param,
         likelihood_model=likelihood_model,
-        learning_rate=learning_rate)
+        learning_rate=learning_rate,
+        **inference_alg_kwargs)
 
     return inference_alg_results
+
+
+def sampling_hmc_gibbs(observations,
+                       concentration_param: float,
+                       likelihood_model: str,
+                       learning_rate: float,
+                       num_samples: int,
+                       truncation_num_clusters: int):
+    # why sampling is so hard:
+    # https://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
+
+    num_obs, obs_dim = observations.shape
+
+    if truncation_num_clusters is None:
+        # multiply by 2 for safety
+        truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
+
+    def mix_weights(beta):
+        beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
+        term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
+        term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
+        return jnp.multiply(term1, term2)
+
+    def model(obs):
+        with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+            beta = numpyro.sample(
+                'beta',
+                numpyro.distributions.Beta(1, concentration_param))
+
+        with numpyro.plate('mean_plate', truncation_num_clusters):
+            mean = numpyro.sample(
+                'mean',
+                numpyro.distributions.MultivariateNormal(
+                    jnp.zeros(obs_dim),
+                    gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
+
+        with numpyro.plate('data', num_obs):
+            z = numpyro.sample(
+                'z',
+                numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+            numpyro.sample(
+                'obs',
+                numpyro.distributions.MultivariateNormal(
+                    mean[z],
+                    gaussian_cov_scaling * jnp.eye(obs_dim)),
+                obs=obs)
+
+    hmc_kernel = numpyro.infer.NUTS(model)
+    kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
+    mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=num_samples, progress_bar=True)
+    mcmc.run(random.PRNGKey(0), obs=observations)
+    # mcmc.print_summary()
+    samples = mcmc.get_samples()
+
+    # shape (num samples, num centroids, obs dim)
+    params = dict(means=np.mean(np.array(samples['mean'][-1000:, :, :]), axis=0))
+    # shape (num samples, num obs)
+    sampled_table_assignments = np.array(samples['z'])
+    # convert sampled cluster assignments from (num samples, num obs) to (num obs, num clusters)
+    bins = np.arange(0, 2 + np.max(sampled_table_assignments))
+    table_assignment_posteriors = np.stack([
+        np.histogram(sampled_table_assignments[-1000:, obs_idx], bins=bins, density=True)[0]
+        for obs_idx in range(num_obs)])
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    # returns classes assigned and centroids of corresponding classes
+    hmc_gibbs_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=params,
+    )
+
+    return hmc_gibbs_results
 
 
 def sequential_updating_and_greedy_search(observations,
                                           concentration_param: float,
                                           likelihood_model: str,
-                                          learning_rate: float = 1e2):
+                                          learning_rate):
     # Fast Bayesian Inference in Dirichlet Process Mixture Models
     # Wang and Dunson (2011)
 
@@ -645,8 +801,37 @@ def sequential_updating_and_greedy_search(observations,
 def variational_sequential_updating_and_greedy_search(observations,
                                                       concentration_param: float,
                                                       likelihood_model: str,
-                                                      learning_rate: float = 1e2):
+                                                      learning_rate):
     # A sequential algorithm for fast fitting of Dirichlet process mixture models
     # Nott, Zhang, Yau and Jasra (2013)
     raise NotImplementedError
 
+
+def variational_bayes(observations,
+                      alpha: float,
+                      max_iter: int = 8,  # same as DP-Means
+                      num_initializations: int = 1):
+    assert alpha > 0
+
+    num_obs, obs_dim = observations.shape
+    var_dp_gmm = sklearn.mixture.BayesianGaussianMixture(
+        n_components=num_obs,
+        max_iter=max_iter,
+        n_init=num_initializations,
+        init_params='random',
+        weight_concentration_prior_type='dirichlet_process',
+        weight_concentration_prior=alpha)
+    var_dp_gmm.fit(observations)
+    table_assignment_posteriors = var_dp_gmm.predict_proba(observations)
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+    params = dict(means=var_dp_gmm.means_,
+                  covs=var_dp_gmm.covariances_)
+
+    # returns classes assigned and centroids of corresponding classes
+    variational_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=params,
+    )
+    return variational_results
