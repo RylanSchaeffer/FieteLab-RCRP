@@ -6,14 +6,14 @@ import seaborn as sns
 
 
 def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
-                                   sampled_mog_results_by_dataset: dict,
+                                   sampled_mou_results_by_dataset: dict,
                                    plot_dir: str):
 
     num_datasets = len(inference_algs_results_by_dataset)
     # TODO: Check the number of clusters
-    num_clusters = len(np.unique(sampled_mog_results_by_dataset[0]['assigned_table_seq']))
+    num_clusters = len(np.unique(sampled_mou_results_by_dataset[0]['assigned_table_seq']))
     assert np.allclose(
-        [len(np.unique(sampled_mog_results_by_dataset[dataset_idx]['assigned_table_seq']))
+        [len(np.unique(sampled_mou_results_by_dataset[dataset_idx]['assigned_table_seq']))
          for dataset_idx in range(num_datasets)],
         num_clusters)
 
