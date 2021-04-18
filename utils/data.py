@@ -205,7 +205,7 @@ def sample_sequence_from_mixture_of_unigrams(seq_len: int = 450,
         assigned_table_seq = np.argmax(assigned_table_seq_one_hot, axis=1)
         num_topics_in_corpus = len(np.unique(assigned_table_seq))
         num_samples += 1
-        print(f'Num of corpus samples: {num_samples}')
+        # print(f'Num of corpus samples: {num_samples}')
 
     doc_samples_seq = np.zeros(shape=(seq_len, vocab_dim))
     for doc_idx in range(seq_len):

@@ -729,7 +729,8 @@ def run_inference_alg(inference_alg_str,
         inference_alg_kwargs['truncation_num_clusters'] = 12
 
         if likelihood_model == 'dirichlet_multinomial':
-            raise NotImplementedError
+            inference_alg_kwargs['model_params'] = dict(
+                dirichlet_concentration_param=10.)  # same as R-CRP
         elif likelihood_model == 'multivariate_normal':
             # Note: these are the ground truth parameters
             inference_alg_kwargs['model_params'] = dict(
@@ -745,9 +746,15 @@ def run_inference_alg(inference_alg_str,
         num_steps = 1000 * int(substrs[1][1:-1])
         inference_alg_kwargs['num_steps'] = num_steps
         # Note: these are the ground truth parameters
-        inference_alg_kwargs['model_params'] = dict(
-            gaussian_mean_prior_cov_scaling=6,
-            gaussian_cov_scaling=0.3)
+        if likelihood_model == 'dirichlet_multinomial':
+            inference_alg_kwargs['model_params'] = dict(
+                dirichlet_concentration_param=10.)  # same as R-CRP
+        elif likelihood_model == 'multivariate_gaussian':
+            inference_alg_kwargs['model_params'] = dict(
+                gaussian_mean_prior_cov_scaling=6,
+                gaussian_cov_scaling=0.3)
+        else:
+            raise ValueError
     elif inference_alg_str.startswith('Variational Bayes'):
         inference_alg_fn = variational_bayes
         # Suppose we have an algorithm string 'Variational Bayes (10 Init, 10 Iterations)',
@@ -800,7 +807,7 @@ def sampling_hmc_gibbs(observations,
                     'topics_concentrations',
                     numpyro.distributions.Dirichlet(
                         concentration=jnp.full(obs_dim,
-                                               fill_value=model_params['epsilon'])))  # TODO: is mask necessary?
+                                               fill_value=model_params['dirichlet_concentration_param'])))  # TODO: is mask necessary?
 
             with numpyro.plate('data', num_obs):
                 z = numpyro.sample(
@@ -846,8 +853,18 @@ def sampling_hmc_gibbs(observations,
     # mcmc.print_summary()
     samples = mcmc.get_samples()
 
-    # shape (num samples, num centroids, obs dim)
-    params = dict(means=np.mean(np.array(samples['mean'][-1000:, :, :]), axis=0))
+    if likelihood_model == 'dirichlet_multinomial':
+        parameters = dict(
+            beta=np.mean(np.array(samples['beta'][-1000:, :]), axis=0),
+            topics_concentrations=np.mean(np.array(samples['topics_concentrations'][-1000:, :, :]), axis=0))
+    elif likelihood_model == 'multivariate_normal':
+        # shape (num samples, num centroids, obs dim)
+        parameters = dict(
+            beta=np.mean(np.array(samples['beta'][-1000:, :]), axis=0),
+            means=np.mean(np.array(samples['mean'][-1000:, :, :]), axis=0))
+    else:
+        raise ValueError
+
     # shape (num samples, num obs)
     sampled_table_assignments = np.array(samples['z'])
     # convert sampled cluster assignments from (num samples, num obs) to (num obs, num clusters)
@@ -862,7 +879,7 @@ def sampling_hmc_gibbs(observations,
     hmc_gibbs_results = dict(
         table_assignment_posteriors=table_assignment_posteriors,
         table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
-        parameters=params,
+        parameters=parameters,
     )
 
     return hmc_gibbs_results
@@ -1104,7 +1121,8 @@ def stochastic_variational_inference(observations,
                 topics_concentrations = numpyro.sample(
                     'topics_concentrations',
                     numpyro.distributions.Dirichlet(
-                        concentration=jnp.full(shape=obs_dim, fill_value=model_params['epsilon'])))
+                        concentration=jnp.full(shape=obs_dim,
+                                               fill_value=model_params['dirichlet_concentration_param'])))
 
             with numpyro.plate('data', num_obs):
                 z = numpyro.sample(

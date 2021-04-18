@@ -1,5 +1,6 @@
 import joblib
 import os
+from timeit import default_timer as timer
 
 from exp_02_mixture_of_unigrams.plot import *
 import utils.data
@@ -14,7 +15,7 @@ def main():
 
     num_datasets = 5
     inference_algs_results_by_dataset = {}
-    sampled_mou_results_by_dataset = {}
+    sampled_mou_results_by_dataset_idx = {}
 
     # generate lots of datasets and record performance for each
     for dataset_idx in range(num_datasets):
@@ -25,12 +26,14 @@ def main():
             dataset_dir=dataset_dir)
 
         inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
-        sampled_mou_results_by_dataset[dataset_idx] = dataset_sampled_mix_of_unigrams_results
+        sampled_mou_results_by_dataset_idx[dataset_idx] = dataset_sampled_mix_of_unigrams_results
 
     plot_inference_algs_comparison(
         plot_dir=plot_dir,
-        inference_algs_results_by_dataset=inference_algs_results_by_dataset,
-        sampled_mou_results_by_dataset=sampled_mou_results_by_dataset)
+        inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset,
+        dataset_by_dataset_idx=sampled_mou_results_by_dataset_idx)
+
+    print('Successfully completed Exp 02 Mixture of Unigrams')
 
 
 def run_one_dataset(dataset_dir,
@@ -43,7 +46,7 @@ def run_one_dataset(dataset_dir,
         unigram_params=dict(dp_concentration_param=dp_concentration_param,
                             prior_over_topic_parameters=prior_over_topic_parameters))
 
-    concentration_params = 0.01 + np.arange(0., 5.01,
+    concentration_params = 0.01 + np.arange(0., 10.01,
                                             1.,
                                             # 0.25
                                             )
@@ -51,14 +54,15 @@ def run_one_dataset(dataset_dir,
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',
-        'DP-Means (online)',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
-        # 'DP-Means (offline)',
-        # 'HMC-Gibbs',
-        # 'SVI',
-        # 'Variational Bayes',
+        'HMC-Gibbs (5000 Samples)',
+        'HMC-Gibbs (20000 Samples)',
+        'SVI (5k Steps)',
+        'SVI (20k Steps)',
     ]
+
 
     inference_algs_results = {}
     for inference_alg_str in inference_alg_strs:
@@ -95,16 +99,22 @@ def run_and_plot_inference_alg(sampled_mou_results,
     os.makedirs(inference_alg_plot_dir, exist_ok=True)
     num_clusters_by_concentration_param = {}
     scores_by_concentration_param = {}
+    runtimes_by_concentration_param = {}
 
     for concentration_param in concentration_params:
 
         # run inference algorithm
+        start_time = timer()
         inference_alg_results = utils.inference.run_inference_alg(
             inference_alg_str=inference_alg_str,
             observations=sampled_mou_results['doc_samples_seq'],
             concentration_param=concentration_param,
             likelihood_model='dirichlet_multinomial',
             learning_rate=1e0)
+
+        # record elapsed time
+        stop_time = timer()
+        runtimes_by_concentration_param[concentration_param] = stop_time - start_time
 
         # record scores
         scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
@@ -115,19 +125,20 @@ def run_and_plot_inference_alg(sampled_mou_results,
         # count number of clusters
         num_clusters_by_concentration_param[concentration_param] = len(np.unique(pred_cluster_labels))
 
-        # TODO: fix this
-        plot_inference_results(
-            sampled_mou_results=sampled_mou_results,
-            inference_results=inference_alg_results,
-            inference_alg_str=inference_alg_str,
-            concentration_param=concentration_param,
-            plot_dir=inference_alg_plot_dir)
+        # TODO: finish adapting this to Mixture of Unigrams
+        # plot_inference_results(
+        #     sampled_mou_results=sampled_mou_results,
+        #     inference_results=inference_alg_results,
+        #     inference_alg_str=inference_alg_str,
+        #     concentration_param=concentration_param,
+        #     plot_dir=inference_alg_plot_dir)
 
         print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
 
     inference_alg_results = dict(
         num_clusters_by_param=num_clusters_by_concentration_param,
         scores_by_param=pd.DataFrame(scores_by_concentration_param).T,
+        runtimes_by_param=runtimes_by_concentration_param,
     )
 
     return inference_alg_results
