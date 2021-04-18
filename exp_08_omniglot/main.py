@@ -9,9 +9,9 @@ from exp_08_omniglot.plot import plot_inference_results, plot_inference_algs_com
 
 import utils.data
 import utils.helpers
-import utils.inference_mix_of_cont_bernoullis
 import utils.inference
-from utils.metrics import score_predicted_clusters
+import utils.metrics
+import utils.plot
 
 
 def main():
@@ -22,6 +22,11 @@ def main():
 
     omniglot_dataset_results = utils.data.load_omniglot_dataset(
         data_dir='data')
+
+    # plot number of topics versus number of posts
+    utils.plot.plot_num_clusters_by_num_obs(
+        true_cluster_labels=omniglot_dataset_results['true_cluster_labels'],
+        plot_dir=plot_dir)
 
     num_obs = omniglot_dataset_results['assigned_table_seq'].shape[0]
     num_permutations = 5
@@ -45,6 +50,7 @@ def main():
             omniglot_dataset_results=omniglot_dataset_results)
         inference_algs_results_by_dataset_idx[dataset_idx] = dataset_inference_algs_results
 
+    # TODO: merge with utils/plot.py
     plot_inference_algs_comparison(
         omniglot_dataset_results=omniglot_dataset_results,
         plot_dir=plot_dir,
@@ -57,8 +63,8 @@ def main():
 def run_one_dataset(omniglot_dataset_results,
                     dataset_dir):
 
-    concentration_params = np.linspace(0.1*np.log(omniglot_dataset_results['images'].shape[0]),
-                                       10*np.log(omniglot_dataset_results['images'].shape[0]),
+    concentration_params = np.linspace(0.1*np.log(omniglot_dataset_results['assigned_table_seq'].shape[0]),
+                                       10*np.log(omniglot_dataset_results['assigned_table_seq'].shape[0]),
                                        11)
 
     inference_alg_strs = [

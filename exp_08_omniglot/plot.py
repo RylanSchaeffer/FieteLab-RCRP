@@ -112,6 +112,7 @@ def plot_inference_algs_comparison(omniglot_dataset_results,
                                    inference_algs_results_by_dataset_idx: dict,
                                    sampled_permutation_indices_by_dataset_idx: dict,
                                    plot_dir: str):
+
     num_datasets = len(inference_algs_results_by_dataset_idx)
     num_clusters = len(np.unique(omniglot_dataset_results['assigned_table_seq']))
 
