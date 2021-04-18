@@ -493,33 +493,7 @@ def recursive_crp(observations,
         dtype=torch.float64,
         requires_grad=False)
 
-    if likelihood_model == 'multivariate_normal':
-        cluster_parameters = dict(
-            means=torch.full(
-                size=(max_num_latents, obs_dim),
-                fill_value=np.nan,
-                dtype=torch.float64,
-                requires_grad=True),
-            stddevs=torch.full(
-                size=(max_num_latents, obs_dim, obs_dim),
-                fill_value=np.nan,
-                dtype=torch.float64,
-                requires_grad=True),
-        )
-        create_new_cluster_params_fn = create_new_cluster_params_multivariate_normal
-        likelihood_fn = likelihood_multivariate_normal
-    elif likelihood_model == 'dirichlet_multinomial':
-        cluster_parameters = dict(
-            topics_concentrations=torch.full(
-                size=(max_num_latents, obs_dim),
-                fill_value=np.nan,
-                dtype=torch.float64,
-                requires_grad=True),
-        )
-
-        create_new_cluster_params_fn = create_new_cluster_params_dirichlet_multinomial
-        likelihood_fn = likelihood_dirichlet_multinomial
-    elif likelihood_model == 'continuous_bernoulli':
+    if likelihood_model == 'continuous_bernoulli':
         # need to use logits, otherwise gradient descent will carry parameters outside
         # valid interval
         cluster_parameters = dict(
@@ -536,6 +510,31 @@ def recursive_crp(observations,
         epsilon = 1e-2
         observations[observations == 1.] -= epsilon
         observations[observations == 0.] += epsilon
+    elif likelihood_model == 'dirichlet_multinomial':
+        cluster_parameters = dict(
+            topics_concentrations=torch.full(
+                size=(max_num_latents, obs_dim),
+                fill_value=np.nan,
+                dtype=torch.float64,
+                requires_grad=True),
+        )
+        create_new_cluster_params_fn = create_new_cluster_params_dirichlet_multinomial
+        likelihood_fn = likelihood_dirichlet_multinomial
+    elif likelihood_model == 'multivariate_normal':
+        cluster_parameters = dict(
+            means=torch.full(
+                size=(max_num_latents, obs_dim),
+                fill_value=np.nan,
+                dtype=torch.float64,
+                requires_grad=True),
+            stddevs=torch.full(
+                size=(max_num_latents, obs_dim, obs_dim),
+                fill_value=np.nan,
+                dtype=torch.float64,
+                requires_grad=True),
+        )
+        create_new_cluster_params_fn = create_new_cluster_params_multivariate_normal
+        likelihood_fn = likelihood_multivariate_normal
     else:
         raise NotImplementedError
 
@@ -741,6 +740,14 @@ def run_inference_alg(inference_alg_str,
     elif inference_alg_str.startswith('SVI'):
         inference_alg_fn = stochastic_variational_inference
         learning_rate = 1e-4
+        # suppose the inference_alg_str is 'SVI (5k Steps)'
+        substrs = inference_alg_str.split(' ')
+        num_steps = 1000 * int(substrs[1][1:-1])
+        inference_alg_kwargs['num_steps'] = num_steps
+        # Note: these are the ground truth parameters
+        inference_alg_kwargs['model_params'] = dict(
+            gaussian_mean_prior_cov_scaling=6,
+            gaussian_cov_scaling=0.3)
     elif inference_alg_str.startswith('Variational Bayes'):
         inference_alg_fn = variational_bayes
         # Suppose we have an algorithm string 'Variational Bayes (10 Init, 10 Iterations)',
@@ -1082,7 +1089,7 @@ def stochastic_variational_inference(observations,
                                      truncation_num_clusters=None, ):
     num_obs, obs_dim = observations.shape
     if truncation_num_clusters is None:
-        # multiply by 2 as heuristic
+        # multiply by 2 to be safe
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
 
     if likelihood_model == 'dirichlet_multinomial':
@@ -1125,6 +1132,7 @@ def stochastic_variational_inference(observations,
                         concentration0=jnp.ones(truncation_num_clusters - 1),
                         concentration1=q_beta_params))
 
+            # TODO: why is shape = (truncation, obs dim)?
             q_topics_concentrations_params = numpyro.param(
                 f'q_topics_concentrations_params',
                 init_value=jax.random.exponential(key=jax.random.PRNGKey(0),
@@ -1179,10 +1187,11 @@ def stochastic_variational_inference(observations,
         def guide(obs):
             q_beta_params = numpyro.param(
                 'q_beta_params',
-                init_value=jax.random.uniform(key=jax.random.PRNGKey(0),
-                                              minval=0,
-                                              maxval=2,
-                                              shape=(truncation_num_clusters - 1,)),
+                init_value=jax.random.uniform(
+                    key=jax.random.PRNGKey(0),
+                    minval=0,
+                    maxval=2,
+                    shape=(truncation_num_clusters - 1,)),
                 constraint=numpyro.distributions.constraints.positive)
 
             with numpyro.plate('beta_plate', truncation_num_clusters - 1):
@@ -1194,10 +1203,11 @@ def stochastic_variational_inference(observations,
 
             q_means_params = numpyro.param(
                 'q_means_params',
-                init_value=jax.random.multivariate_normal(key=jax.random.PRNGKey(0),
-                                                          mean=jnp.zeros(obs_dim),
-                                                          cov=model_params['gaussian_mean_prior_cov_scaling'] * jnp.eye(
-                                                              obs_dim)))
+                init_value=jax.random.multivariate_normal(
+                    key=jax.random.PRNGKey(0),
+                    mean=jnp.zeros(obs_dim),
+                    cov=model_params['gaussian_mean_prior_cov_scaling'] * jnp.eye(obs_dim),
+                    shape=(truncation_num_clusters, )))
 
             with numpyro.plate('mean_plate', truncation_num_clusters):
                 q_mean = numpyro.sample(
@@ -1209,9 +1219,9 @@ def stochastic_variational_inference(observations,
             q_z_assignment_params = numpyro.param(
                 'q_z_assignment_params',
                 init_value=jax.random.dirichlet(key=jax.random.PRNGKey(0),
-                                     alpha=jnp.ones(
-                                         truncation_num_clusters) / truncation_num_clusters,
-                                     shape=(num_obs,)),
+                                                alpha=jnp.ones(
+                                                    truncation_num_clusters) / truncation_num_clusters,
+                                                shape=(num_obs,)),
                 constraint=numpyro.distributions.constraints.simplex)
 
             with numpyro.plate('data', num_obs):
@@ -1231,10 +1241,16 @@ def stochastic_variational_inference(observations,
                          obs=observations,
                          progress_bar=True)
 
-    parameters = dict(
-        topics_word_prob_vectors=np.array(svi_result.params['q_topics_concentrations_params']),
-        # mixture_weights=np.array(mix_weights()))
-    )
+    if likelihood_model == 'dirichlet_multinomial':
+        parameters = dict(
+            q_beta_params=np.array(svi_result.params['q_beta_params']),
+            topics_concentrations=np.array(svi_result.params['q_topics_concentrations_params']))
+    elif likelihood_model == 'multivariate_normal':
+        parameters = dict(
+            q_beta_params=np.array(svi_result.params['q_beta_params']),
+            means=np.array(svi_result.params['q_means_params']))
+    else:
+        raise ValueError
 
     table_assignment_posteriors = np.array(svi_result.params['q_z_assignment_params'])
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,

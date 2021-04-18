@@ -1,6 +1,6 @@
 # Efficient Online Inference for Nonparametric Latent Variable Time Series
 
-![](exp_00_prior/plots/crt_table_distribution.png)
+![](exp_00_crp_prior/plots/crt_table_distribution_alpha=15.37.png)
 
 ## Setup
 
