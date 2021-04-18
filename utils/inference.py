@@ -239,6 +239,14 @@ def log_beta(a, b):
     return result
 
 
+def mix_weights(beta):
+    # stick-breaking construction of DP
+    beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
+    term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
+    term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
+    return jnp.multiply(term1, term2)
+
+
 def online_crp(observations,
                concentration_param: float,
                likelihood_model: str,
@@ -679,7 +687,7 @@ def recursive_crp(observations,
         table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.detach().numpy(),
         num_table_posteriors=num_table_posteriors.detach().numpy(),
         parameters={k: v.detach().numpy() for k, v in cluster_parameters.items()},
-        # TODO: why do I have to detach here?
+        # TODO: why do I have to detach all of these?
     )
 
     return bayesian_recursion_results
@@ -720,10 +728,17 @@ def run_inference_alg(inference_alg_str,
         num_samples = int(inference_alg_str.split(' ')[1][1:])
         inference_alg_kwargs['num_samples'] = num_samples
         inference_alg_kwargs['truncation_num_clusters'] = 12
+
+        if likelihood_model == 'dirichlet_multinomial':
+            raise NotImplementedError
+        elif likelihood_model == 'multivariate_normal':
+            # Note: these are the ground truth parameters
+            inference_alg_kwargs['model_params'] = dict(
+                gaussian_mean_prior_cov_scaling=6,
+                gaussian_cov_scaling=0.3)
+        else:
+            raise ValueError(f'Unknown likelihood model: {likelihood_model}')
     elif inference_alg_str == 'SVI':
-        # variational_bayes_results = run_and_plot_variational_bayes(
-        #     sampled_mog_results=sampled_mog_results,
-        #     plot_dir=plot_dir)
         raise NotImplementedError
     elif inference_alg_str == 'Variational Bayes':
         inference_alg_fn = variational_bayes
@@ -748,9 +763,12 @@ def sampling_hmc_gibbs(observations,
                        likelihood_model: str,
                        learning_rate: float,
                        num_samples: int,
-                       truncation_num_clusters: int):
+                       model_params: dict,
+                       truncation_num_clusters: int = None):
     # why sampling is so hard:
     # https://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
+
+    # learning rate is not used
 
     num_obs, obs_dim = observations.shape
 
@@ -758,35 +776,60 @@ def sampling_hmc_gibbs(observations,
         # multiply by 2 for safety
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
 
-    def mix_weights(beta):
-        beta1m_cumprod = jnp.cumprod(1 - beta, axis=-1)
-        term1 = jnp.pad(beta, (0, 1), mode='constant', constant_values=1.)
-        term2 = jnp.pad(beta1m_cumprod, (1, 0), mode='constant', constant_values=1.)
-        return jnp.multiply(term1, term2)
+    if likelihood_model == 'dirichlet_multinomial':
+        # TODO: move into separate function
+        # TODO: rewrite for Dirichlet Multinomial
+        # def model(obs):
+        #     with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+        #         beta = numpyro.sample(
+        #             'beta',
+        #             numpyro.distributions.Beta(1, concentration_param))
+        #
+        #     with numpyro.plate('mean_plate', truncation_num_clusters):
+        #         mean = numpyro.sample(
+        #             'mean',
+        #             numpyro.distributions.MultivariateNormal(
+        #                 jnp.zeros(obs_dim),
+        #                 gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
+        #
+        #     with numpyro.plate('data', num_obs):
+        #         z = numpyro.sample(
+        #             'z',
+        #             numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+        #         numpyro.sample(
+        #             'obs',
+        #             numpyro.distributions.MultivariateNormal(
+        #                 mean[z],
+        #                 gaussian_cov_scaling * jnp.eye(obs_dim)),
+        #             obs=obs)
+        raise NotImplementedError
+    elif likelihood_model == 'multivariate_normal':
+        # TODO: move into own function
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
 
-    def model(obs):
-        with numpyro.plate('beta_plate', truncation_num_clusters - 1):
-            beta = numpyro.sample(
-                'beta',
-                numpyro.distributions.Beta(1, concentration_param))
+            with numpyro.plate('mean_plate', truncation_num_clusters):
+                mean = numpyro.sample(
+                    'mean',
+                    numpyro.distributions.MultivariateNormal(
+                        jnp.zeros(obs_dim),
+                        model_params['gaussian_mean_prior_cov_scaling'] * jnp.eye(obs_dim)))
 
-        with numpyro.plate('mean_plate', truncation_num_clusters):
-            mean = numpyro.sample(
-                'mean',
-                numpyro.distributions.MultivariateNormal(
-                    jnp.zeros(obs_dim),
-                    gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
-
-        with numpyro.plate('data', num_obs):
-            z = numpyro.sample(
-                'z',
-                numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
-            numpyro.sample(
-                'obs',
-                numpyro.distributions.MultivariateNormal(
-                    mean[z],
-                    gaussian_cov_scaling * jnp.eye(obs_dim)),
-                obs=obs)
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.MultivariateNormal(
+                        mean[z],
+                        model_params['gaussian_cov_scaling'] * jnp.eye(obs_dim)),
+                    obs=obs)
+    else:
+        raise NotImplementedError(f'Likelihood model ({likelihood_model} not yet implemented)')
 
     hmc_kernel = numpyro.infer.NUTS(model)
     kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
