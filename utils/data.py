@@ -1,4 +1,15 @@
+import os
+
 import numpy as np
+import pandas as pd
+from sklearn.decomposition import PCA
+import sklearn.feature_extraction.text
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import torch
+import torch.nn.functional
+import torch.utils.data
+import torchvision
 
 
 def generate_mixture_of_gaussians(num_gaussians: int = 3,
@@ -58,6 +69,125 @@ def generate_mixture_of_unigrams(num_topics: int,
                                topics_parameters=topics_parameters)
 
     return mixture_of_unigrams
+
+
+def load_omniglot_dataset(data_dir='data'):
+
+    # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
+    omniglot_dataset = torchvision.datasets.Omniglot(
+        root=data_dir,
+        download=True,
+        transform=torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.CenterCrop((70, 70)),
+            torchvision.transforms.Lambda(
+                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=11, stride=7)),
+            # torchvision.transforms.GaussianBlur(kernel_size=11),
+            # torchvision.transforms.Resize((10, 10)),
+        ])
+    )
+
+    # truncate dataset for now
+    # character_classes = [images_and_classes[1] for images_and_classes in
+    #                      omniglot_dataset._flat_character_images]
+    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:120]
+    dataset_size = len(omniglot_dataset._flat_character_images)
+
+    omniglot_dataloader = torch.utils.data.DataLoader(
+        dataset=omniglot_dataset,
+        batch_size=1,
+        shuffle=False)
+
+    images, labels = [], []
+    for image, label in omniglot_dataloader:
+        # visualize first image, if curious
+        images.append(image[0, 0, :, :])
+        # images.append(omniglot_dataset[0][0][0, :, :])
+        labels.append(label)
+        # plt.imshow(images[-1].numpy(), cmap='gray')
+        # plt.show()
+
+    images = torch.stack(images).numpy()
+    epsilon = 1e-2
+    # ensure all values between [epsilon, 1 - epsilon]
+    images[images > 1. - epsilon] = 1. - epsilon
+    images[images < epsilon] = epsilon
+    labels = np.array(labels)
+
+    reshaped_images = np.reshape(images, newshape=(dataset_size, 9*9))
+    pca = PCA(n_components=5)
+    pca_images = pca.fit_transform(reshaped_images)
+    cum_frac_var_explained = np.cumsum(pca.explained_variance_ratio_)
+
+    omniglot_dataset_results = dict(
+        images=images,
+        labels=labels,
+        pca=pca,
+        pca_images=pca_images,
+        cum_frac_var_explained=cum_frac_var_explained,
+    )
+
+    return omniglot_dataset_results
+
+
+def load_reddit_dataset(data_dir='data'):
+
+    os.makedirs(data_dir, exist_ok=True)
+
+    # possible other alternative datasets:
+    #   https://www.tensorflow.org/datasets/catalog/cnn_dailymail
+    #   https://www.tensorflow.org/datasets/catalog/newsroom (also in sklearn)
+
+    # useful overview: https://www.tensorflow.org/datasets/overview
+    # take only subset of data for speed: https://www.tensorflow.org/datasets/splits
+    # specific dataset: https://www.tensorflow.org/datasets/catalog/reddit
+    reddit_dataset, reddit_dataset_info = tfds.load(
+        'reddit',
+        split='train',  # [:1%]',
+        shuffle_files=False,
+        download=True,
+        with_info=True,
+        data_dir=data_dir)
+    assert isinstance(reddit_dataset, tf.data.Dataset)
+    # reddit_dataframe = pd.DataFrame(reddit_dataset.take(10))
+    reddit_dataframe = tfds.as_dataframe(
+        ds=reddit_dataset.take(200),
+        ds_info=reddit_dataset_info)
+    reddit_dataframe = pd.DataFrame(reddit_dataframe)
+
+    true_cluster_label_strs = reddit_dataframe['subreddit'].values
+    true_cluster_labels = reddit_dataframe['subreddit'].astype('category').cat.codes.values
+
+    documents_text = reddit_dataframe['normalizedBody'].values
+
+    # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
+    # equivalent to CountVectorizer() + TfidfTransformer()
+    # for more info, see
+    # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
+    # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
+    tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
+        max_features=5000,
+        sublinear_tf=False)
+    observations_tfidf = tfidf_vectorizer.fit_transform(documents_text)
+
+    # quoting from Lin NeurIPS 2013:
+    # We pruned the vocabulary to 5000 words by removing stop words and
+    # those with low TF-IDF scores, and obtained 150 topics by running LDA [3]
+    # on a subset of 20K documents. We held out 10K documents for testing and use the
+    # remaining to train the DPMM. We compared SVA,SVA-PM, and TVF.
+
+    # possible likelihoods for TF-IDF data
+    # https://stats.stackexchange.com/questions/271923/how-to-use-tfidf-vectors-with-multinomial-naive-bayes
+    # https://stackoverflow.com/questions/43237286/how-can-we-use-tfidf-vectors-with-multinomial-naive-bayes
+    reddit_dataset_results = dict(
+        observations_tfidf=observations_tfidf.toarray(),  # remove .toarray() to keep CSR matrix
+        true_cluster_label_strs=true_cluster_label_strs,
+        true_cluster_labels=true_cluster_labels,
+        tfidf_vectorizer=tfidf_vectorizer,
+        feature_names=tfidf_vectorizer.get_feature_names(),
+    )
+
+    return reddit_dataset_results
 
 
 def sample_sequence_from_crp(T: int,

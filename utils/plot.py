@@ -146,3 +146,50 @@ def plot_inference_algs_runtimes_by_param(runtimes_by_dataset_by_inference_alg: 
                 dpi=300)
     # plt.show()
     plt.close()
+
+
+def plot_num_clusters_by_num_obs(true_cluster_labels,
+                                 plot_dir: str):
+
+    # compute the empirical number of topics per number of posts
+    unique_labels = set()
+    empiric_num_unique_clusters_by_end_index = []
+    for cluster_label in true_cluster_labels:
+        unique_labels.add(cluster_label)
+        empiric_num_unique_clusters_by_end_index.append(len(unique_labels))
+    empiric_num_unique_clusters_by_end_index = np.array(empiric_num_unique_clusters_by_end_index)
+
+    obs_indices = 1 + np.arange(len(empiric_num_unique_clusters_by_end_index))
+
+    # fit alpha to the empirical number of topics per number of posts
+    def expected_num_tables(customer_idx, alpha):
+        return np.multiply(alpha, np.log(1 + customer_idx / alpha))
+
+    from scipy.optimize import curve_fit
+    popt, pcov = curve_fit(f=expected_num_tables,
+                           xdata=obs_indices,
+                           ydata=empiric_num_unique_clusters_by_end_index)
+    fitted_alpha = popt[0]
+
+    fitted_num_unique_clusters_by_end_index = expected_num_tables(
+        customer_idx=obs_indices,
+        alpha=fitted_alpha)
+
+    plt.plot(obs_indices,
+             empiric_num_unique_clusters_by_end_index,
+             label='Empiric')
+    plt.plot(obs_indices,
+             fitted_num_unique_clusters_by_end_index,
+             label=f'Fit (alpha = {np.round(fitted_alpha, 2)})')
+    plt.legend()
+
+    # make axes equal
+    plt.axis('square')
+
+    plt.savefig(os.path.join(plot_dir, 'fitted_alpha.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+

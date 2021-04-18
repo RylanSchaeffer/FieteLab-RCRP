@@ -1,16 +1,12 @@
 import joblib
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-from sklearn.decomposition import PCA
 import torch
-import torch.nn.functional
-import torch.utils.data
-import torchvision
 
 from exp_08_omniglot.plot import plot_inference_results, plot_inference_algs_comparison
 
+import utils.data
 import utils.helpers
 import utils.inference_mix_of_cont_bernoullis
 import utils.inference
@@ -22,10 +18,12 @@ def main():
 
     plot_dir = os.path.join(exp_dir, 'plots')
     os.makedirs(plot_dir, exist_ok=True)
+
     np.random.seed(1)
     torch.manual_seed(0)
 
-    omniglot_dataset_results = load_omniglot_dataset(exp_dir)
+    omniglot_dataset_results = utils.data.load_omniglot_dataset(
+        data_dir='data')
 
     num_obs = omniglot_dataset_results['labels'].shape[0]
     num_permutations = 5
@@ -72,67 +70,6 @@ def main():
     print('Successfully completed Exp 08 Omniglot')
 
 
-def load_omniglot_dataset(exp_dir):
-
-    data_dir = os.path.join(exp_dir, 'data')
-
-    # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
-    omniglot_dataset = torchvision.datasets.Omniglot(
-        root=data_dir,
-        download=True,
-        transform=torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.CenterCrop((70, 70)),
-            torchvision.transforms.Lambda(
-                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=11, stride=7)),
-            # torchvision.transforms.GaussianBlur(kernel_size=11),
-            # torchvision.transforms.Resize((10, 10)),
-        ])
-    )
-
-    # truncate dataset for now
-    # character_classes = [images_and_classes[1] for images_and_classes in
-    #                      omniglot_dataset._flat_character_images]
-    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:120]
-    dataset_size = len(omniglot_dataset._flat_character_images)
-
-    omniglot_dataloader = torch.utils.data.DataLoader(
-        dataset=omniglot_dataset,
-        batch_size=1,
-        shuffle=False)
-
-    images, labels = [], []
-    for image, label in omniglot_dataloader:
-        # visualize first image, if curious
-        images.append(image[0, 0, :, :])
-        # images.append(omniglot_dataset[0][0][0, :, :])
-        labels.append(label)
-        # plt.imshow(images[-1].numpy(), cmap='gray')
-        # plt.show()
-
-    images = torch.stack(images).numpy()
-    epsilon = 1e-2
-    # ensure all values between [epsilon, 1 - epsilon]
-    images[images > 1. - epsilon] = 1. - epsilon
-    images[images < epsilon] = epsilon
-    labels = np.array(labels)
-
-    reshaped_images = np.reshape(images, newshape=(dataset_size, 9*9))
-    pca = PCA(n_components=5)
-    pca_images = pca.fit_transform(reshaped_images)
-    cum_frac_var_explained = np.cumsum(pca.explained_variance_ratio_)
-
-    omniglot_dataset_results = dict(
-        images=images,
-        labels=labels,
-        pca=pca,
-        pca_images=pca_images,
-        cum_frac_var_explained=cum_frac_var_explained,
-    )
-
-    return omniglot_dataset_results
-
-
 def run_one_dataset(omniglot_dataset_results,
                     plot_dir):
 
@@ -166,12 +103,12 @@ def run_and_plot_bayesian_recursion(omniglot_dataset_results,
         #     observations=images.reshape(images.shape[0], -1),
         #     alpha=alpha)
 
-        bayesian_recursion_results = utils.inference.bayesian_recursion(
+        bayesian_recursion_results = utils.inference.recursive_crp(
             observations=omniglot_dataset_results['pca_images'],
             # likelihood_model='continuous_bernoulli',
             likelihood_model='multivariate_normal',
-            em_learning_rate=1e1,
-            alpha=alpha)
+            learning_rate=1e1,
+            concentration_param=alpha)
         
         # bayesian_recursion_results = utils.inference.bayesian_recursion(
         #     observations=omniglot_dataset_results['images'].reshape(omniglot_dataset_results['images'].shape[0], -1),
