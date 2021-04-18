@@ -90,13 +90,13 @@ def load_omniglot_dataset(data_dir='data'):
     # truncate dataset for now
     # character_classes = [images_and_classes[1] for images_and_classes in
     #                      omniglot_dataset._flat_character_images]
-    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:120]
+    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:1200]
     dataset_size = len(omniglot_dataset._flat_character_images)
 
     omniglot_dataloader = torch.utils.data.DataLoader(
         dataset=omniglot_dataset,
         batch_size=1,
-        shuffle=True,
+        shuffle=False,
     )
 
     images, labels = [], []
@@ -108,7 +108,7 @@ def load_omniglot_dataset(data_dir='data'):
         # images.append(omniglot_dataset[0][0][0, :, :])
 
     images = torch.stack(images).numpy()
-    epsilon = 1e-2
+    epsilon = 1e-3
     # ensure all values between [epsilon, 1 - epsilon]
     images[images > 1. - epsilon] = 1. - epsilon
     images[images < epsilon] = epsilon
