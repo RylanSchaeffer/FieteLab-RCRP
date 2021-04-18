@@ -32,6 +32,19 @@ def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
         plot_dir=plot_dir,
         num_clusters=num_clusters)
 
+    # construct dictionary mapping from inference alg to dataframe
+    # with dataset idx as rows and concentration parameters as columns
+    # {inference alg: DataFrame(runtimes)}
+    runtimes_by_dataset_by_inference_alg = {}
+    for inference_alg in inference_algs:
+        runtimes_by_dataset_by_inference_alg[inference_alg] = pd.DataFrame([
+            inference_algs_results_by_dataset[dataset_idx][inference_alg]['runtimes_by_param']
+            for dataset_idx in range(num_datasets)])
+
+    plot_inference_algs_runtimes_by_param(
+        runtimes_by_dataset_by_inference_alg=runtimes_by_dataset_by_inference_alg,
+        plot_dir=plot_dir)
+
     # construct dictionary mapping from scoring metric to inference alg
     # to dataframe with dataset idx as rows and concentration parameters as columns
     # {scoring metric: {inference alg: DataFrame(scores)}}
@@ -75,7 +88,7 @@ def plot_inference_algs_num_clusters_by_param(num_clusters_by_dataset_by_inferen
     plt.savefig(os.path.join(plot_dir, f'num_clusters_by_param.png'),
                 bbox_inches='tight',
                 dpi=300)
-    plt.show()
+    # plt.show()
     plt.close()
 
 
@@ -104,3 +117,30 @@ def plot_inference_algs_scores_by_param(scores_by_dataset_by_inference_alg_by_sc
                     dpi=300)
         # plt.show()
         plt.close()
+
+
+def plot_inference_algs_runtimes_by_param(runtimes_by_dataset_by_inference_alg: dict,
+                                          plot_dir: str):
+
+    for inference_alg_str, inference_alg_runtime_df in runtimes_by_dataset_by_inference_alg.items():
+        means = inference_alg_runtime_df.mean()
+        sems = inference_alg_runtime_df.sem()
+        plt.plot(inference_alg_runtime_df.columns.values,  # concentration parameters
+                 means,
+                 label=inference_alg_str)
+        plt.fill_between(
+            x=inference_alg_runtime_df.columns.values,
+            y1=means - sems,
+            y2=means + sems,
+            alpha=0.3,
+            linewidth=0)
+
+    plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
+    plt.ylabel('Runtime (s)')
+    plt.gca().set_xlim(left=0)
+    plt.legend()
+    plt.savefig(os.path.join(plot_dir, f'runtimes_by_param.png'),
+                bbox_inches='tight',
+                dpi=300)
+    plt.show()
+    plt.close()
