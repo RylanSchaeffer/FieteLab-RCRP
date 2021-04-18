@@ -59,7 +59,7 @@ def run_one_dataset(omniglot_dataset_results,
 
     concentration_params = np.linspace(0.1*np.log(omniglot_dataset_results['images'].shape[0]),
                                        10*np.log(omniglot_dataset_results['images'].shape[0]),
-                                       21)
+                                       11)
 
     inference_alg_strs = [
         # online algorithms

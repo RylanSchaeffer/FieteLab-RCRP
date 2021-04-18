@@ -11,7 +11,6 @@ def plot_inference_results(omniglot_dataset_results: dict,
                            inference_alg_str: str,
                            concentration_param: float,
                            plot_dir):
-
     labels = omniglot_dataset_results['assigned_table_seq']
     num_obs = len(labels)
     # for obs_idx in range(num_obs):
@@ -58,22 +57,24 @@ def plot_inference_results(omniglot_dataset_results: dict,
     ax.set_ylabel('Observation #')
     ax.set_xlabel('True Class')
 
-    ax = axes[1]
-    table_assignment_priors = np.copy(inference_results['table_assignment_priors'])
     table_assignment_posteriors = np.copy(inference_results['table_assignment_posteriors'])
     posterior_cutoff = 1e-5
-    table_assignment_priors[table_assignment_priors < posterior_cutoff] = np.nan
     table_assignment_posteriors[table_assignment_posteriors < posterior_cutoff] = np.nan
     max_posterior_index = np.argmax(np.all(np.isnan(table_assignment_posteriors), axis=0)) + 1
-    sns.heatmap(data=table_assignment_priors[:, :max_posterior_index],
-                ax=ax,
-                yticklabels=False,
-                mask=np.isnan(table_assignment_priors[:, :max_posterior_index]),
-                cmap='jet',
-                norm=LogNorm(),
-                vmax=1.,
-                vmin=posterior_cutoff)
-    ax.set_xlabel(r'$p(z_t=k|x_{<t})$')
+
+    ax = axes[1]
+    if 'table_assignment_priors' in inference_results:
+        table_assignment_priors = np.copy(inference_results['table_assignment_priors'])
+        table_assignment_priors[table_assignment_priors < posterior_cutoff] = np.nan
+        sns.heatmap(data=table_assignment_priors[:, :max_posterior_index],
+                    ax=ax,
+                    yticklabels=False,
+                    mask=np.isnan(table_assignment_priors[:, :max_posterior_index]),
+                    cmap='jet',
+                    norm=LogNorm(),
+                    vmax=1.,
+                    vmin=posterior_cutoff)
+        ax.set_xlabel(r'$p(z_t=k|x_{<t})$')
 
     # plot predicted classes
     ax = axes[2]
@@ -99,7 +100,7 @@ def plot_inference_results(omniglot_dataset_results: dict,
     ax.set_xlabel(r'$p(K_t=k|x_{\leq t})$')
 
     plt.savefig(os.path.join(plot_dir, '{}_alpha={:.2f}_pred_assignments.png'.format(inference_alg_str,
-                                                                           concentration_param)),
+                                                                                     concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
     plt.show()
@@ -110,8 +111,6 @@ def plot_inference_algs_comparison(omniglot_dataset_results,
                                    inference_algs_results_by_dataset_idx: dict,
                                    sampled_permutation_indices_by_dataset_idx: dict,
                                    plot_dir: str):
-
-
     num_datasets = len(inference_algs_results_by_dataset_idx)
     num_clusters = len(np.unique(omniglot_dataset_results['assigned_table_seq']))
 
@@ -143,7 +142,8 @@ def plot_inference_algs_comparison(omniglot_dataset_results,
         for inference_alg in inference_algs:
             scores_by_dataset_by_inference_alg_by_scoring_metric[scoring_metric][inference_alg] = \
                 pd.DataFrame(
-                    [inference_algs_results_by_dataset_idx[dataset_idx][inference_alg]['scores_by_param'][scoring_metric]
+                    [inference_algs_results_by_dataset_idx[dataset_idx][inference_alg]['scores_by_param'][
+                         scoring_metric]
                      for dataset_idx in range(num_datasets)])
 
     plot_inference_algs_scores_by_param(
