@@ -1,5 +1,5 @@
-from jax import random
 import jax.numpy as jnp
+import jax.random
 import numpy as np
 import numpyro
 import numpyro.infer
@@ -669,7 +669,7 @@ def recursive_crp(observations,
             # new approach with time complexity O(t)
             # update posterior over number of tables using posterior over customer seat
             cum_table_assignment_posterior = torch.cumsum(
-                table_assignment_posteriors[obs_idx, :obs_idx+1],
+                table_assignment_posteriors[obs_idx, :obs_idx + 1],
                 dim=0)
             one_minus_cum_table_assignment_posterior = 1. - cum_table_assignment_posterior
             prev_table_posterior = num_table_posteriors[obs_idx - 1, :obs_idx]
@@ -738,12 +738,17 @@ def run_inference_alg(inference_alg_str,
                 gaussian_cov_scaling=0.3)
         else:
             raise ValueError(f'Unknown likelihood model: {likelihood_model}')
-    elif inference_alg_str == 'SVI':
-        raise NotImplementedError
-    elif inference_alg_str == 'Variational Bayes':
+    elif inference_alg_str.startswith('SVI'):
+        inference_alg_fn = stochastic_variational_inference
+        learning_rate = 1e-4
+    elif inference_alg_str.startswith('Variational Bayes'):
         inference_alg_fn = variational_bayes
-        inference_alg_kwargs['max_iter'] = 8  # same as DP-Means
-        inference_alg_kwargs['num_initializations'] = 1
+        # Suppose we have an algorithm string 'Variational Bayes (10 Init, 10 Iterations)',
+        substrs = inference_alg_str.split(' ')
+        num_initializations = int(substrs[2][1:])
+        max_iters = int(substrs[4])
+        inference_alg_kwargs['num_initializations'] = num_initializations
+        inference_alg_kwargs['max_iter'] = max_iters
     else:
         raise ValueError(f'Unknown inference algorithm: {inference_alg_str}')
 
@@ -771,38 +776,34 @@ def sampling_hmc_gibbs(observations,
     # learning rate is not used
 
     num_obs, obs_dim = observations.shape
-
     if truncation_num_clusters is None:
         # multiply by 2 for safety
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
 
     if likelihood_model == 'dirichlet_multinomial':
         # TODO: move into separate function
-        # TODO: rewrite for Dirichlet Multinomial
-        # def model(obs):
-        #     with numpyro.plate('beta_plate', truncation_num_clusters - 1):
-        #         beta = numpyro.sample(
-        #             'beta',
-        #             numpyro.distributions.Beta(1, concentration_param))
-        #
-        #     with numpyro.plate('mean_plate', truncation_num_clusters):
-        #         mean = numpyro.sample(
-        #             'mean',
-        #             numpyro.distributions.MultivariateNormal(
-        #                 jnp.zeros(obs_dim),
-        #                 gaussian_mean_prior_cov_scaling * jnp.eye(obs_dim)))
-        #
-        #     with numpyro.plate('data', num_obs):
-        #         z = numpyro.sample(
-        #             'z',
-        #             numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
-        #         numpyro.sample(
-        #             'obs',
-        #             numpyro.distributions.MultivariateNormal(
-        #                 mean[z],
-        #                 gaussian_cov_scaling * jnp.eye(obs_dim)),
-        #             obs=obs)
-        raise NotImplementedError
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
+
+            with numpyro.plate('topic_concentration_plate', truncation_num_clusters):
+                topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=jnp.full(obs_dim,
+                                               fill_value=model_params['epsilon'])))  # TODO: is mask necessary?
+
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.DirichletMultinomial(
+                        concentration=topics_concentrations[z]),
+                    obs=obs)
     elif likelihood_model == 'multivariate_normal':
         # TODO: move into own function
         def model(obs):
@@ -829,12 +830,12 @@ def sampling_hmc_gibbs(observations,
                         model_params['gaussian_cov_scaling'] * jnp.eye(obs_dim)),
                     obs=obs)
     else:
-        raise NotImplementedError(f'Likelihood model ({likelihood_model} not yet implemented)')
+        raise ValueError(f'Likelihood model ({likelihood_model} not yet implemented)')
 
     hmc_kernel = numpyro.infer.NUTS(model)
     kernel = numpyro.infer.DiscreteHMCGibbs(inner_kernel=hmc_kernel)
     mcmc = numpyro.infer.MCMC(kernel, num_warmup=100, num_samples=num_samples, progress_bar=True)
-    mcmc.run(random.PRNGKey(0), obs=observations)
+    mcmc.run(jax.random.PRNGKey(0), obs=observations)
     # mcmc.print_summary()
     samples = mcmc.get_samples()
 
@@ -1072,6 +1073,192 @@ def sequential_updating_and_greedy_search(observations,
     return local_map_results
 
 
+def stochastic_variational_inference(observations,
+                                     concentration_param: float,
+                                     likelihood_model: str,
+                                     learning_rate: float,
+                                     num_steps: int,
+                                     model_params: dict,
+                                     truncation_num_clusters=None, ):
+    num_obs, obs_dim = observations.shape
+    if truncation_num_clusters is None:
+        # multiply by 2 as heuristic
+        truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
+
+    if likelihood_model == 'dirichlet_multinomial':
+        # TODO: move into separate function
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
+
+            with numpyro.plate('topic_concentrations_plate', truncation_num_clusters):
+                topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=jnp.full(shape=obs_dim, fill_value=model_params['epsilon'])))
+
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))  # TODO: is mask necessary?
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.DirichletMultinomial(
+                        concentration=topics_concentrations[z]),
+                    obs=obs)
+
+        def guide(obs):
+            q_beta_params = numpyro.param(
+                'q_beta_params',
+                init_value=jax.random.uniform(key=jax.random.PRNGKey(0),
+                                              minval=0,
+                                              maxval=2,
+                                              shape=(truncation_num_clusters - 1,)),
+                constraint=numpyro.distributions.constraints.positive)
+
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                q_beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(
+                        concentration0=jnp.ones(truncation_num_clusters - 1),
+                        concentration1=q_beta_params))
+
+            q_topics_concentrations_params = numpyro.param(
+                f'q_topics_concentrations_params',
+                init_value=jax.random.exponential(key=jax.random.PRNGKey(0),
+                                                  shape=(truncation_num_clusters, obs_dim)),
+                constraint=numpyro.distributions.constraints.positive)
+
+            with numpyro.plate('topic_concentrations_plate', truncation_num_clusters):
+                q_topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=q_topics_concentrations_params))
+
+            q_z_assignment_params = numpyro.param(
+                'q_z_assignment_params',
+                init_value=jax.random.dirichlet(key=jax.random.PRNGKey(0),
+                                                alpha=jnp.ones(
+                                                    truncation_num_clusters) / truncation_num_clusters,
+                                                shape=(num_obs,)),
+                constraint=numpyro.distributions.constraints.simplex)
+
+            with numpyro.plate('data', num_obs):
+                q_z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(
+                        probs=q_z_assignment_params))
+    elif likelihood_model == 'multivariate_normal':
+        # TODO: move into own function
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
+
+            with numpyro.plate('mean_plate', truncation_num_clusters):
+                mean = numpyro.sample(
+                    'mean',
+                    numpyro.distributions.MultivariateNormal(
+                        jnp.zeros(obs_dim),
+                        model_params['gaussian_mean_prior_cov_scaling'] * jnp.eye(obs_dim)))
+
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.MultivariateNormal(
+                        mean[z],
+                        model_params['gaussian_cov_scaling'] * jnp.eye(obs_dim)),
+                    obs=obs)
+
+        def guide(obs):
+            q_beta_params = numpyro.param(
+                'q_beta_params',
+                init_value=jax.random.uniform(key=jax.random.PRNGKey(0),
+                                              minval=0,
+                                              maxval=2,
+                                              shape=(truncation_num_clusters - 1,)),
+                constraint=numpyro.distributions.constraints.positive)
+
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                q_beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(
+                        concentration0=jnp.ones(truncation_num_clusters - 1),
+                        concentration1=q_beta_params))
+
+            q_means_params = numpyro.param(
+                'q_means_params',
+                init_value=jax.random.multivariate_normal(key=jax.random.PRNGKey(0),
+                                                          mean=jnp.zeros(obs_dim),
+                                                          cov=model_params['gaussian_mean_prior_cov_scaling'] * jnp.eye(
+                                                              obs_dim)))
+
+            with numpyro.plate('mean_plate', truncation_num_clusters):
+                q_mean = numpyro.sample(
+                    'mean',
+                    numpyro.distributions.MultivariateNormal(
+                        q_means_params,
+                        model_params['gaussian_cov_scaling'] * jnp.eye(obs_dim)))
+
+            q_z_assignment_params = numpyro.param(
+                'q_z_assignment_params',
+                init_value=jax.random.dirichlet(key=jax.random.PRNGKey(0),
+                                     alpha=jnp.ones(
+                                         truncation_num_clusters) / truncation_num_clusters,
+                                     shape=(num_obs,)),
+                constraint=numpyro.distributions.constraints.simplex)
+
+            with numpyro.plate('data', num_obs):
+                q_z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(probs=q_z_assignment_params))
+    else:
+        raise ValueError(f'Likelihood model ({likelihood_model} not yet implemented)')
+
+    optimizer = numpyro.optim.Adam(step_size=learning_rate)
+    svi = numpyro.infer.SVI(model,
+                            guide,
+                            optimizer,
+                            loss=numpyro.infer.Trace_ELBO())
+    svi_result = svi.run(jax.random.PRNGKey(0),
+                         num_steps=num_steps,
+                         obs=observations,
+                         progress_bar=True)
+
+    parameters = dict(
+        topics_word_prob_vectors=np.array(svi_result.params['q_topics_concentrations_params']),
+        # mixture_weights=np.array(mix_weights()))
+    )
+
+    table_assignment_posteriors = np.array(svi_result.params['q_z_assignment_params'])
+    table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
+                                                        axis=0)
+
+    # import seaborn as sns
+    # fig, axes = plt.subplots(nrows=1, ncols=2)
+    # sns.heatmap(docs, cmap='jet', ax=axes[0])
+    # sns.heatmap(table_assignment_posteriors, cmap='jet', ax=axes[1])
+    # fig.suptitle(f'Num Steps = {num_steps}')
+    # plt.savefig(f'exp_02_mixture_of_unigrams/plots/hmc_gibbs_alpha={alpha}_num_steps={num_steps}.png')
+    # plt.show()
+    # plt.close()
+
+    # returns classes assigned and centroids of corresponding classes
+    stochastic_variational_inference_results = dict(
+        table_assignment_posteriors=table_assignment_posteriors,
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum,
+        parameters=parameters,
+    )
+
+    return stochastic_variational_inference_results
+
+
 def variational_sequential_updating_and_greedy_search(observations,
                                                       concentration_param: float,
                                                       likelihood_model: str,
@@ -1082,10 +1269,17 @@ def variational_sequential_updating_and_greedy_search(observations,
 
 
 def variational_bayes(observations,
-                      alpha: float,
+                      likelihood_model: str,
+                      learning_rate: float,
+                      concentration_param: float,
                       max_iter: int = 8,  # same as DP-Means
                       num_initializations: int = 1):
-    assert alpha > 0
+    # Variational Inference for Dirichlet Process Mixtures
+    # Blei and Jordan (2006)
+    # likelihood_model not used
+    # learning rate not used
+
+    assert concentration_param > 0
 
     num_obs, obs_dim = observations.shape
     var_dp_gmm = sklearn.mixture.BayesianGaussianMixture(
@@ -1094,7 +1288,7 @@ def variational_bayes(observations,
         n_init=num_initializations,
         init_params='random',
         weight_concentration_prior_type='dirichlet_process',
-        weight_concentration_prior=alpha)
+        weight_concentration_prior=concentration_param)
     var_dp_gmm.fit(observations)
     table_assignment_posteriors = var_dp_gmm.predict_proba(observations)
     table_assignment_posteriors_running_sum = np.cumsum(table_assignment_posteriors,
