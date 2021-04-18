@@ -7,14 +7,15 @@ import os
 import pandas as pd
 
 
-def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
-                                   sampled_mog_results_by_dataset: dict,
+def plot_inference_algs_comparison(inference_algs_results_by_dataset_idx: dict,
+                                   dataset_by_dataset_idx: dict,
                                    plot_dir: str):
-    num_datasets = len(inference_algs_results_by_dataset)
-    num_clusters = len(np.unique(sampled_mog_results_by_dataset[0]['assigned_table_seq']))
 
-    inference_algs = list(inference_algs_results_by_dataset[0].keys())
-    scoring_metrics = inference_algs_results_by_dataset[0][inference_algs[0]]['scores_by_param'].columns.values
+    num_datasets = len(inference_algs_results_by_dataset_idx)
+    num_clusters = len(np.unique(dataset_by_dataset_idx[0]['assigned_table_seq']))
+
+    inference_algs = list(inference_algs_results_by_dataset_idx[0].keys())
+    scoring_metrics = inference_algs_results_by_dataset_idx[0][inference_algs[0]]['scores_by_param'].columns.values
 
     # we have four dimensions of interest: inference_alg, dataset idx, scoring metric, concentration parameter
 
@@ -24,7 +25,7 @@ def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
     num_clusters_by_dataset_by_inference_alg = {}
     for inference_alg in inference_algs:
         num_clusters_by_dataset_by_inference_alg[inference_alg] = pd.DataFrame([
-            inference_algs_results_by_dataset[dataset_idx][inference_alg]['num_clusters_by_param']
+            inference_algs_results_by_dataset_idx[dataset_idx][inference_alg]['num_clusters_by_param']
             for dataset_idx in range(num_datasets)])
 
     plot_inference_algs_num_clusters_by_param(
@@ -38,7 +39,7 @@ def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
     runtimes_by_dataset_by_inference_alg = {}
     for inference_alg in inference_algs:
         runtimes_by_dataset_by_inference_alg[inference_alg] = pd.DataFrame([
-            inference_algs_results_by_dataset[dataset_idx][inference_alg]['runtimes_by_param']
+            inference_algs_results_by_dataset_idx[dataset_idx][inference_alg]['runtimes_by_param']
             for dataset_idx in range(num_datasets)])
 
     plot_inference_algs_runtimes_by_param(
@@ -54,7 +55,7 @@ def plot_inference_algs_comparison(inference_algs_results_by_dataset: dict,
         for inference_alg in inference_algs:
             scores_by_dataset_by_inference_alg_by_scoring_metric[scoring_metric][inference_alg] = \
                 pd.DataFrame(
-                    [inference_algs_results_by_dataset[dataset_idx][inference_alg]['scores_by_param'][scoring_metric]
+                    [inference_algs_results_by_dataset_idx[dataset_idx][inference_alg]['scores_by_param'][scoring_metric]
                      for dataset_idx in range(num_datasets)])
 
     plot_inference_algs_scores_by_param(
@@ -142,5 +143,5 @@ def plot_inference_algs_runtimes_by_param(runtimes_by_dataset_by_inference_alg: 
     plt.savefig(os.path.join(plot_dir, f'runtimes_by_param.png'),
                 bbox_inches='tight',
                 dpi=300)
-    plt.show()
+    # plt.show()
     plt.close()
