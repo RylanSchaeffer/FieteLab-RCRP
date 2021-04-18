@@ -181,6 +181,8 @@ def plot_num_clusters_by_num_obs(true_cluster_labels,
     plt.plot(obs_indices,
              fitted_num_unique_clusters_by_end_index,
              label=f'Fit (alpha = {np.round(fitted_alpha, 2)})')
+    plt.xlabel('Observation Index')
+    plt.ylabel('New Cluster (Ground Truth)')
     plt.legend()
 
     # make axes equal

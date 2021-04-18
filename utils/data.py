@@ -163,7 +163,7 @@ def load_reddit_dataset(data_dir='data'):
     assert isinstance(reddit_dataset, tf.data.Dataset)
     # reddit_dataframe = pd.DataFrame(reddit_dataset.take(10))
     reddit_dataframe = tfds.as_dataframe(
-        ds=reddit_dataset.take(200),
+        ds=reddit_dataset.take(2000),
         ds_info=reddit_dataset_info)
     reddit_dataframe = pd.DataFrame(reddit_dataframe)
 
@@ -194,7 +194,7 @@ def load_reddit_dataset(data_dir='data'):
     reddit_dataset_results = dict(
         observations_tfidf=observations_tfidf.toarray(),  # remove .toarray() to keep CSR matrix
         true_cluster_label_strs=true_cluster_label_strs,
-        true_cluster_labels=true_cluster_labels,
+        assigned_table_seq=true_cluster_labels,
         tfidf_vectorizer=tfidf_vectorizer,
         feature_names=tfidf_vectorizer.get_feature_names(),
     )
