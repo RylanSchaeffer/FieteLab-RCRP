@@ -14,23 +14,23 @@ def main():
     np.random.seed(1)
 
     num_datasets = 5
-    inference_algs_results_by_dataset = {}
-    sampled_mog_results_by_dataset = {}
+    inference_algs_results_by_dataset_idx = {}
+    sampled_mog_results_by_dataset_idx = {}
 
     # generate lots of datasets and record performance for each
     for dataset_idx in range(num_datasets):
         print(f'Dataset Index: {dataset_idx}')
         dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
         os.makedirs(dataset_dir, exist_ok=True)
-        dataset_inference_algs_results, dataset_sampled_mog_results = run_one_dataset(
+        dataset_inference_algs_results, dataset_sampled_mix_of_gussians_results = run_one_dataset(
             dataset_dir=dataset_dir)
-        inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
-        sampled_mog_results_by_dataset[dataset_idx] = dataset_sampled_mog_results
+        inference_algs_results_by_dataset_idx[dataset_idx] = dataset_inference_algs_results
+        sampled_mog_results_by_dataset_idx[dataset_idx] = dataset_sampled_mix_of_gussians_results
 
     plot_inference_algs_comparison(
         plot_dir=plot_dir,
-        inference_algs_results_by_dataset=inference_algs_results_by_dataset,
-        sampled_mog_results_by_dataset=sampled_mog_results_by_dataset)
+        inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset_idx,
+        dataset_by_dataset_idx=sampled_mog_results_by_dataset_idx)
 
     print('Successfully completed Exp 01 Mixture of Gaussians')
 
@@ -62,9 +62,13 @@ def run_one_dataset(dataset_dir,
         'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         'DP-Means (offline)',
-        # 'HMC-Gibbs (5000 Samples)',
-        # 'SVI',
-        # 'Variational Bayes',
+        'HMC-Gibbs (5000 Samples)',
+        'HMC-Gibbs (20000 Samples)',
+        'SVI (5k Steps)',
+        'SVI (20k Steps)',
+        'Variational Bayes (15 Init, 30 Iter)',
+        'Variational Bayes (5 Init, 30 Iter)',
+        'Variational Bayes (1 Init, 8 Iter)',
     ]
 
     inference_algs_results = {}
@@ -115,6 +119,8 @@ def run_and_plot_inference_alg(sampled_mog_results,
             concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
             learning_rate=1e0)
+
+        # record elapsed time
         stop_time = timer()
         runtimes_by_concentration_param[concentration_param] = stop_time - start_time
 

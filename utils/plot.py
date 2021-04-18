@@ -139,6 +139,7 @@ def plot_inference_algs_runtimes_by_param(runtimes_by_dataset_by_inference_alg: 
     plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
     plt.ylabel('Runtime (s)')
     plt.gca().set_xlim(left=0)
+    plt.yscale('log')
     plt.legend()
     plt.savefig(os.path.join(plot_dir, f'runtimes_by_param.png'),
                 bbox_inches='tight',
