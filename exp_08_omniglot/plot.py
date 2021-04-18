@@ -89,15 +89,16 @@ def plot_inference_results(omniglot_dataset_results: dict,
     ax.set_xlabel(r'$p(z_t=k|x_{\leq t})$')
 
     ax = axes[3]
-    sns.heatmap(data=inference_results['num_table_posteriors'][:, :max_posterior_index],
-                ax=ax,
-                yticklabels=False,
-                mask=inference_results['num_table_posteriors'][:, :max_posterior_index] < posterior_cutoff,
-                cmap='jet',
-                norm=LogNorm(),
-                vmax=1.,
-                vmin=posterior_cutoff)
-    ax.set_xlabel(r'$p(K_t=k|x_{\leq t})$')
+    if 'num_table_posteriors' in inference_results:
+        sns.heatmap(data=inference_results['num_table_posteriors'][:, :max_posterior_index],
+                    ax=ax,
+                    yticklabels=False,
+                    mask=inference_results['num_table_posteriors'][:, :max_posterior_index] < posterior_cutoff,
+                    cmap='jet',
+                    norm=LogNorm(),
+                    vmax=1.,
+                    vmin=posterior_cutoff)
+        ax.set_xlabel(r'$p(K_t=k|x_{\leq t})$')
 
     plt.savefig(os.path.join(plot_dir, '{}_alpha={:.2f}_pred_assignments.png'.format(inference_alg_str,
                                                                                      concentration_param)),
