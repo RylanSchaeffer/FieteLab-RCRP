@@ -1,5 +1,6 @@
 import joblib
 import os
+from timeit import default_timer as timer
 
 from exp_01_mixture_of_gaussians.plot import *
 import utils.data
@@ -23,7 +24,6 @@ def main():
         os.makedirs(dataset_dir, exist_ok=True)
         dataset_inference_algs_results, dataset_sampled_mog_results = run_one_dataset(
             dataset_dir=dataset_dir)
-
         inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
         sampled_mog_results_by_dataset[dataset_idx] = dataset_sampled_mog_results
 
@@ -49,19 +49,20 @@ def run_one_dataset(dataset_dir,
         gaussian_params=dict(gaussian_cov_scaling=gaussian_cov_scaling,
                              gaussian_mean_prior_cov_scaling=gaussian_mean_prior_cov_scaling))
 
-    concentration_params = 0.01 + np.arange(0., 5.01,
-                                            1.,
-                                            # 0.25
+    concentration_params = 0.01 + np.arange(0., 6.01,
+                                            # 2.,
+                                            0.25
                                             )
 
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',
-        'DP-Means (online)',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
+        'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
-        # 'DP-Means (offline)',
-        # 'HMC-Gibbs',
+        'DP-Means (offline)',
+        # 'HMC-Gibbs (5000 Samples)',
         # 'SVI',
         # 'Variational Bayes',
     ]
@@ -101,16 +102,21 @@ def run_and_plot_inference_alg(sampled_mog_results,
     os.makedirs(inference_alg_plot_dir, exist_ok=True)
     num_clusters_by_concentration_param = {}
     scores_by_concentration_param = {}
+    runtimes_by_concentration_param = {}
 
     for concentration_param in concentration_params:
 
         # run inference algorithm
+        # time using timer because https://stackoverflow.com/a/25823885/4570472
+        start_time = timer()
         inference_alg_results = utils.inference.run_inference_alg(
             inference_alg_str=inference_alg_str,
             observations=sampled_mog_results['gaussian_samples_seq'],
             concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
             learning_rate=1e0)
+        stop_time = timer()
+        runtimes_by_concentration_param[concentration_param] = stop_time - start_time
 
         # record scores
         scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
@@ -133,6 +139,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
     inference_alg_results = dict(
         num_clusters_by_param=num_clusters_by_concentration_param,
         scores_by_param=pd.DataFrame(scores_by_concentration_param).T,
+        runtimes_by_param=runtimes_by_concentration_param,
     )
 
     return inference_alg_results
