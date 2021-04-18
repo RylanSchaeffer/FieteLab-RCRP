@@ -79,9 +79,9 @@ def load_omniglot_dataset(data_dir='data'):
         download=True,
         transform=torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
-            torchvision.transforms.CenterCrop((70, 70)),
+            # torchvision.transforms.CenterCrop((80, 80)),
             torchvision.transforms.Lambda(
-                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=11, stride=7)),
+                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=9, stride=3)),
             # torchvision.transforms.GaussianBlur(kernel_size=11),
             # torchvision.transforms.Resize((10, 10)),
         ])
@@ -96,33 +96,45 @@ def load_omniglot_dataset(data_dir='data'):
     omniglot_dataloader = torch.utils.data.DataLoader(
         dataset=omniglot_dataset,
         batch_size=1,
-        shuffle=False)
+        shuffle=True,
+    )
 
     images, labels = [], []
     for image, label in omniglot_dataloader:
-        # visualize first image, if curious
-        images.append(image[0, 0, :, :])
-        # images.append(omniglot_dataset[0][0][0, :, :])
         labels.append(label)
-        # plt.imshow(images[-1].numpy(), cmap='gray')
-        # plt.show()
+        images.append(image[0, 0, :, :])
+
+        # uncomment to deterministically append the first image
+        # images.append(omniglot_dataset[0][0][0, :, :])
 
     images = torch.stack(images).numpy()
     epsilon = 1e-2
     # ensure all values between [epsilon, 1 - epsilon]
     images[images > 1. - epsilon] = 1. - epsilon
     images[images < epsilon] = epsilon
+
+    # these might be swapped but I think height = width for omniglot
+    _, image_height, image_width = images.shape
     labels = np.array(labels)
 
-    reshaped_images = np.reshape(images, newshape=(dataset_size, 9*9))
-    pca = PCA(n_components=5)
-    pca_images = pca.fit_transform(reshaped_images)
-    cum_frac_var_explained = np.cumsum(pca.explained_variance_ratio_)
+    reshaped_images = np.reshape(images, newshape=(dataset_size, image_height * image_width))
+    pca = PCA(n_components=20)
+    pca_latents = pca.fit_transform(reshaped_images)
+    pca_images = np.reshape(pca.inverse_transform(pca_latents),
+                            newshape=(dataset_size, image_height, image_width))
+    cum_frac_var_explained = np.sum(pca.explained_variance_ratio_)
+
+    # # visualize images if curious
+    # import matplotlib.pyplot as plt
+    # for idx in range(10):
+    #     plt.imshow(pca_images[idx], cmap='gray')
+    #     plt.show()
 
     omniglot_dataset_results = dict(
         images=images,
-        labels=labels,
+        assigned_table_seq=labels,
         pca=pca,
+        pca_latents=pca_latents,
         pca_images=pca_images,
         cum_frac_var_explained=cum_frac_var_explained,
     )
@@ -144,7 +156,7 @@ def load_reddit_dataset(data_dir='data'):
     reddit_dataset, reddit_dataset_info = tfds.load(
         'reddit',
         split='train',  # [:1%]',
-        shuffle_files=False,
+        shuffle_files=True,
         download=True,
         with_info=True,
         data_dir=data_dir)

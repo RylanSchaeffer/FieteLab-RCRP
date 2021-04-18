@@ -2,6 +2,7 @@ import joblib
 import numpy as np
 import os
 import pandas as pd
+from timeit import default_timer as timer
 import torch
 
 from exp_08_omniglot.plot import plot_inference_results, plot_inference_algs_comparison
@@ -14,135 +15,147 @@ from utils.metrics import score_predicted_clusters
 
 
 def main():
-    exp_dir = 'exp_08_omniglot'
-
-    plot_dir = os.path.join(exp_dir, 'plots')
+    plot_dir = 'exp_08_omniglot/plots'
     os.makedirs(plot_dir, exist_ok=True)
-
     np.random.seed(1)
     torch.manual_seed(0)
 
     omniglot_dataset_results = utils.data.load_omniglot_dataset(
         data_dir='data')
 
-    num_obs = omniglot_dataset_results['labels'].shape[0]
+    num_obs = omniglot_dataset_results['assigned_table_seq'].shape[0]
     num_permutations = 5
-    inference_algs_results_by_dataset = {}
-    sampled_permutation_indices_by_dataset = {}
-    for dataset_idx in range(num_permutations):
+    inference_algs_results_by_dataset_idx = {}
+    sampled_permutation_indices_by_dataset_idx = {}
 
+    # generate lots of datasets and record performance for each
+    for dataset_idx in range(num_permutations):
+        print(f'Dataset Index: {dataset_idx}')
         dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
+        os.makedirs(dataset_dir, exist_ok=True)
 
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
-        sampled_permutation_indices_by_dataset[dataset_idx] = index_permutation
-        omniglot_dataset_results['images'] = omniglot_dataset_results['images'][index_permutation]
-        omniglot_dataset_results['labels'] = omniglot_dataset_results['labels'][index_permutation]
+        sampled_permutation_indices_by_dataset_idx[dataset_idx] = index_permutation
+        omniglot_dataset_results['pca_latents'] = omniglot_dataset_results['pca_latents'][index_permutation]
+        omniglot_dataset_results['assigned_table_seq'] = omniglot_dataset_results['assigned_table_seq'][index_permutation]
 
-        dataset_results_path = os.path.join(dataset_dir, 'dataset_results.joblib')
-        if os.path.isfile(dataset_results_path):
-            # load from disk if exists
-            dataset_results = joblib.load(dataset_results_path)
-        else:
-            # otherwise, generate anew
-            dataset_inference_algs_results = run_one_dataset(
-                omniglot_dataset_results=omniglot_dataset_results,
-                plot_dir=dataset_dir)
-            dataset_results = dict(
-                dataset_inference_algs_results=dataset_inference_algs_results,
-            )
-            joblib.dump(dataset_results, dataset_results_path)
-
-            # delete variables from memory and perform fresh read from disk
-            del dataset_inference_algs_results
-            del dataset_results
-            dataset_results = joblib.load(dataset_results_path)
-
-        inference_algs_results_by_dataset[dataset_idx] = dataset_results['dataset_inference_algs_results']
+        dataset_inference_algs_results = run_one_dataset(
+            dataset_dir=dataset_dir,
+            omniglot_dataset_results=omniglot_dataset_results)
+        inference_algs_results_by_dataset_idx[dataset_idx] = dataset_inference_algs_results
 
     plot_inference_algs_comparison(
-        images=omniglot_dataset_results['images'],
-        labels=omniglot_dataset_results['labels'],
+        omniglot_dataset_results=omniglot_dataset_results,
         plot_dir=plot_dir,
-        inference_algs_results_by_dataset=inference_algs_results_by_dataset,
-        sampled_permutation_indices_by_dataset=sampled_permutation_indices_by_dataset)
+        inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset_idx,
+        sampled_permutation_indices_by_dataset_idx=sampled_permutation_indices_by_dataset_idx)
 
     print('Successfully completed Exp 08 Omniglot')
 
 
 def run_one_dataset(omniglot_dataset_results,
-                    plot_dir):
+                    dataset_dir):
 
-    bayesian_recursion_results = run_and_plot_bayesian_recursion(
-        omniglot_dataset_results=omniglot_dataset_results,
-        plot_dir=plot_dir)
+    concentration_params = np.linspace(0.1*np.log(omniglot_dataset_results['images'].shape[0]),
+                                       10*np.log(omniglot_dataset_results['images'].shape[0]),
+                                       21)
 
-    inference_algs_results = {
-        'Bayesian Recursion': bayesian_recursion_results,
-        # 'HMC-Gibbs (5k Samples)': hmc_gibbs_5000_samples_results,
-        # 'HMC-Gibbs (20k Samples)': hmc_gibbs_20000_samples_results,
-        # 'DP-Means (Online)': dp_means_online_results,
-        # 'DP-Means (Offline)': dp_means_offline_results,
-        # 'Variational Bayes': variational_bayes_results,
-    }
+    inference_alg_strs = [
+        # online algorithms
+        'R-CRP',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
+        'DP-Means (online)',  # deterministically select highest assignment posterior
+        # offline algorithms
+        'DP-Means (offline)',
+        'HMC-Gibbs (5000 Samples)',
+        'HMC-Gibbs (20000 Samples)',
+        'SVI (5k Steps)',
+        'SVI (20k Steps)',
+        'Variational Bayes (15 Init, 30 Iter)',
+        'Variational Bayes (5 Init, 30 Iter)',
+        'Variational Bayes (1 Init, 8 Iter)',
+    ]
+
+    inference_algs_results = {}
+    for inference_alg_str in inference_alg_strs:
+
+        inference_alg_dir = os.path.join(dataset_dir, inference_alg_str)
+        os.makedirs(inference_alg_dir, exist_ok=True)
+        inference_alg_results_path = os.path.join(inference_alg_dir, 'results.joblib')
+
+        # if results do not exist, generate
+        if not os.path.isfile(inference_alg_results_path):
+            inference_alg_results = run_and_plot_inference_alg(
+                omniglot_dataset_results=omniglot_dataset_results,
+                inference_alg_str=inference_alg_str,
+                concentration_params=concentration_params,
+                plot_dir=dataset_dir)
+
+            # write to disk and delete
+            joblib.dump(inference_alg_results, filename=inference_alg_results_path)
+            del inference_alg_results
+
+        # read results from disk
+        inference_alg_results = joblib.load(inference_alg_results_path)
+        inference_algs_results[inference_alg_str] = inference_alg_results
 
     return inference_algs_results
 
 
-def run_and_plot_bayesian_recursion(omniglot_dataset_results,
-                                    plot_dir):
+def run_and_plot_inference_alg(omniglot_dataset_results,
+                               inference_alg_str,
+                               concentration_params,
+                               plot_dir):
 
-    alphas = np.arange(1., 2.01, 1.)
-    bayesian_recursion_plot_dir = os.path.join(plot_dir, 'bayesian_recursion')
-    os.makedirs(bayesian_recursion_plot_dir, exist_ok=True)
-    num_clusters_by_alpha = {}
-    scores_by_alpha = {}
-    for alpha in alphas:
+    inference_alg_plot_dir = os.path.join(plot_dir, inference_alg_str)
+    os.makedirs(inference_alg_plot_dir, exist_ok=True)
+    num_clusters_by_concentration_param = {}
+    scores_by_concentration_param = {}
+    runtimes_by_concentration_param = {}
 
-        # bayesian_recursion_results = utils.inference_mix_of_cont_bernoullis.bayesian_recursion(
-        #     observations=images.reshape(images.shape[0], -1),
-        #     alpha=alpha)
+    for concentration_param in concentration_params:
 
-        bayesian_recursion_results = utils.inference.recursive_crp(
-            observations=omniglot_dataset_results['pca_images'],
-            # likelihood_model='continuous_bernoulli',
+        # run inference algorithm
+        # time using timer because https://stackoverflow.com/a/25823885/4570472
+        start_time = timer()
+        inference_alg_results = utils.inference.run_inference_alg(
+            inference_alg_str=inference_alg_str,
+            observations=omniglot_dataset_results['pca_latents'],
+            concentration_param=concentration_param,
             likelihood_model='multivariate_normal',
-            learning_rate=1e1,
-            concentration_param=alpha)
-        
-        # bayesian_recursion_results = utils.inference.bayesian_recursion(
-        #     observations=omniglot_dataset_results['images'].reshape(omniglot_dataset_results['images'].shape[0], -1),
-        #     likelihood_model='continuous_bernoulli',
-        #     em_learning_rate=1e1,
-        #     alpha=alpha)
+            learning_rate=1e0)
 
-        # add cluster probs from cluster logits
-        # bayesian_recursion_results['parameters']['probs'] = utils.helpers.numpy_logits_to_probs(
-        #     bayesian_recursion_results['parameters']['logits'])
+        # record elapsed time
+        stop_time = timer()
+        runtimes_by_concentration_param[concentration_param] = stop_time - start_time
 
         # record scores
-        scores, pred_cluster_labels = score_predicted_clusters(
-            true_cluster_labels=omniglot_dataset_results['labels'],
-            table_assignment_posteriors=bayesian_recursion_results['table_assignment_posteriors'])
-        scores_by_alpha[alpha] = scores
+        scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
+            true_cluster_labels=omniglot_dataset_results['assigned_table_seq'],
+            table_assignment_posteriors=inference_alg_results['table_assignment_posteriors'])
+        scores_by_concentration_param[concentration_param] = scores
 
         # count number of clusters
-        num_clusters_by_alpha[alpha] = len(np.unique(pred_cluster_labels))
+        num_clusters_by_concentration_param[concentration_param] = len(np.unique(pred_cluster_labels))
 
         plot_inference_results(
             omniglot_dataset_results=omniglot_dataset_results,
-            inference_results=bayesian_recursion_results,
-            inference_alg='bayesian_recursion_alpha={:.2f}'.format(alpha),
-            plot_dir=bayesian_recursion_plot_dir)
+            inference_results=inference_alg_results,
+            inference_alg_str=inference_alg_str,
+            concentration_param=concentration_param,
+            plot_dir=inference_alg_plot_dir)
 
-        print('Finished Bayesian recursion alpha={:.2f}'.format(alpha))
+        print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
 
-    bayesian_recursion_results = dict(
-        num_clusters_by_param=num_clusters_by_alpha,
-        scores_by_param=pd.DataFrame(scores_by_alpha).T,
+    inference_alg_results = dict(
+        num_clusters_by_param=num_clusters_by_concentration_param,
+        scores_by_param=pd.DataFrame(scores_by_concentration_param).T,
+        runtimes_by_param=runtimes_by_concentration_param,
     )
 
-    return bayesian_recursion_results
+    return inference_alg_results
 
 
 if __name__ == '__main__':
