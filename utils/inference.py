@@ -383,7 +383,7 @@ def online_crp(observations,
             assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
             unnormalized_table_assignment_posterior = torch.multiply(
-                likelihoods_per_latent.type(torch.float64),
+                likelihoods_per_latent.detach(),
                 table_assignment_prior)
             table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
                 unnormalized_table_assignment_posterior)
@@ -448,10 +448,10 @@ def online_crp(observations,
             num_table_posteriors[obs_idx, torch.sum(table_assignment_posteriors_running_sum[obs_idx] != 0) - 1] = 1.
 
     online_crp_results = dict(
-        table_assignment_priors=table_assignment_priors.detach().numpy(),
-        table_assignment_posteriors=table_assignment_posteriors.detach().numpy(),
-        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.detach().numpy(),
-        num_table_posteriors=num_table_posteriors.detach().numpy(),
+        table_assignment_priors=table_assignment_priors.numpy(),
+        table_assignment_posteriors=table_assignment_posteriors.numpy(),
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.numpy(),
+        num_table_posteriors=num_table_posteriors.numpy(),
         parameters={k: v.detach().numpy() for k, v in cluster_parameters.items()},
         # TODO: why do I have to detach here?
     )
@@ -594,7 +594,7 @@ def recursive_crp(observations,
                 assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
                 unnormalized_table_assignment_posterior = torch.multiply(
-                    likelihoods_per_latent.type(torch.float64),
+                    likelihoods_per_latent.detach(),
                     table_assignment_prior)
                 table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
                     unnormalized_table_assignment_posterior)
@@ -681,12 +681,11 @@ def recursive_crp(observations,
             assert torch.allclose(torch.sum(num_table_posteriors[obs_idx, :]), one_tensor)
 
     bayesian_recursion_results = dict(
-        table_assignment_priors=table_assignment_priors.detach().numpy(),
-        table_assignment_posteriors=table_assignment_posteriors.detach().numpy(),
-        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.detach().numpy(),
-        num_table_posteriors=num_table_posteriors.detach().numpy(),
+        table_assignment_priors=table_assignment_priors.numpy(),
+        table_assignment_posteriors=table_assignment_posteriors.numpy(),
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.numpy(),
+        num_table_posteriors=num_table_posteriors.numpy(),
         parameters={k: v.detach().numpy() for k, v in cluster_parameters.items()},
-        # TODO: why do I have to detach all of these?
     )
 
     return bayesian_recursion_results
@@ -749,7 +748,7 @@ def run_inference_alg(inference_alg_str,
         if likelihood_model == 'dirichlet_multinomial':
             inference_alg_kwargs['model_params'] = dict(
                 dirichlet_concentration_param=10.)  # same as R-CRP
-        elif likelihood_model == 'multivariate_gaussian':
+        elif likelihood_model == 'multivariate_normal':
             inference_alg_kwargs['model_params'] = dict(
                 gaussian_mean_prior_cov_scaling=6,
                 gaussian_cov_scaling=0.3)
@@ -1022,7 +1021,7 @@ def sequential_updating_and_greedy_search(observations,
             assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
             unnormalized_table_assignment_posterior = torch.multiply(
-                likelihoods_per_latent.type(torch.float64),
+                likelihoods_per_latent.detach(),
                 table_assignment_prior)
             table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
                 unnormalized_table_assignment_posterior)
@@ -1086,10 +1085,10 @@ def sequential_updating_and_greedy_search(observations,
             num_table_posteriors[obs_idx, torch.sum(table_assignment_posteriors_running_sum[obs_idx] != 0) - 1] = 1.
 
     local_map_results = dict(
-        table_assignment_priors=table_assignment_priors.detach().numpy(),
-        table_assignment_posteriors=table_assignment_posteriors.detach().numpy(),
-        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.detach().numpy(),
-        num_table_posteriors=num_table_posteriors.detach().numpy(),
+        table_assignment_priors=table_assignment_priors.numpy(),
+        table_assignment_posteriors=table_assignment_posteriors.numpy(),
+        table_assignment_posteriors_running_sum=table_assignment_posteriors_running_sum.numpy(),
+        num_table_posteriors=num_table_posteriors.numpy(),
         parameters={k: v.detach().numpy() for k, v in cluster_parameters.items()},
         # TODO: why do I have to detach here?
     )
