@@ -124,7 +124,7 @@ def plot_inference_algs_runtimes_by_param(runtimes_by_dataset_by_inference_alg: 
                                           plot_dir: str):
 
     for inference_alg_str, inference_alg_runtime_df in runtimes_by_dataset_by_inference_alg.items():
-        print(inference_alg_runtime_df)
+        print(f'{inference_alg_str} Average Runtime: {np.mean(inference_alg_runtime_df.values)}')
         means = inference_alg_runtime_df.mean()
         sems = inference_alg_runtime_df.sem()
         plt.plot(inference_alg_runtime_df.columns.values,  # concentration parameters
