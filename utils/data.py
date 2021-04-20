@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
+import sklearn.datasets
 from sklearn.decomposition import PCA
 import sklearn.feature_extraction.text
 import tensorflow as tf
@@ -69,6 +70,49 @@ def generate_mixture_of_unigrams(num_topics: int,
                                topics_parameters=topics_parameters)
 
     return mixture_of_unigrams
+
+
+def load_newsgroup_dataset(data_dir='data'):
+    categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
+
+    twenty_train = sklearn.datasets.fetch_20newsgroups(
+        subset='train',  # can switch to 'test'
+        categories=categories,  # set to None for all categories
+        shuffle=True,
+        random_state=0)
+
+    class_names = np.array(twenty_train.target_names)
+    true_cluster_labels = twenty_train.target
+    true_cluster_label_strs = class_names[true_cluster_labels]
+
+    # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
+    # equivalent to CountVectorizer() + TfidfTransformer()
+    # for more info, see
+    # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
+    # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
+    tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
+        max_features=5000,
+        sublinear_tf=False)
+    observations_tfidf = tfidf_vectorizer.fit_transform(twenty_train.data)
+
+    # quoting from Lin NeurIPS 2013:
+    # We pruned the vocabulary to 5000 words by removing stop words and
+    # those with low TF-IDF scores, and obtained 150 topics by running LDA [3]
+    # on a subset of 20K documents. We held out 10K documents for testing and use the
+    # remaining to train the DPMM. We compared SVA,SVA-PM, and TVF.
+
+    # possible likelihoods for TF-IDF data
+    # https://stats.stackexchange.com/questions/271923/how-to-use-tfidf-vectors-with-multinomial-naive-bayes
+    # https://stackoverflow.com/questions/43237286/how-can-we-use-tfidf-vectors-with-multinomial-naive-bayes
+    newsgroup_dataset_results = dict(
+        observations_tfidf=observations_tfidf.toarray(),  # remove .toarray() to keep CSR matrix
+        true_cluster_label_strs=true_cluster_label_strs,
+        assigned_table_seq=true_cluster_labels,
+        tfidf_vectorizer=tfidf_vectorizer,
+        feature_names=tfidf_vectorizer.get_feature_names(),
+    )
+
+    return newsgroup_dataset_results
 
 
 def load_omniglot_dataset(data_dir='data'):
@@ -163,7 +207,7 @@ def load_reddit_dataset(data_dir='data'):
     assert isinstance(reddit_dataset, tf.data.Dataset)
     # reddit_dataframe = pd.DataFrame(reddit_dataset.take(10))
     reddit_dataframe = tfds.as_dataframe(
-        ds=reddit_dataset.take(2000),
+        ds=reddit_dataset.take(1200),
         ds_info=reddit_dataset_info)
     reddit_dataframe = pd.DataFrame(reddit_dataframe)
 
