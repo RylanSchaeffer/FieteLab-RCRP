@@ -25,13 +25,13 @@ def main():
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(
-        true_cluster_labels=omniglot_dataset_results['true_cluster_labels'],
+        true_cluster_labels=omniglot_dataset_results['assigned_table_seq'],
         plot_dir=plot_dir)
 
     num_obs = omniglot_dataset_results['assigned_table_seq'].shape[0]
-    num_permutations = 5
+    num_permutations = 10
     inference_algs_results_by_dataset_idx = {}
-    sampled_permutation_indices_by_dataset_idx = {}
+    dataset_by_dataset_idx = {}
 
     # generate lots of datasets and record performance for each
     for dataset_idx in range(num_permutations):
@@ -41,9 +41,11 @@ def main():
 
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
-        sampled_permutation_indices_by_dataset_idx[dataset_idx] = index_permutation
         omniglot_dataset_results['pca_latents'] = omniglot_dataset_results['pca_latents'][index_permutation]
         omniglot_dataset_results['assigned_table_seq'] = omniglot_dataset_results['assigned_table_seq'][index_permutation]
+        dataset_by_dataset_idx[dataset_idx] = dict(
+            assigned_table_seq=np.copy(omniglot_dataset_results['assigned_table_seq']),
+            observations=np.copy(omniglot_dataset_results['pca_latents']))
 
         dataset_inference_algs_results = run_one_dataset(
             dataset_dir=dataset_dir,
@@ -55,7 +57,7 @@ def main():
         omniglot_dataset_results=omniglot_dataset_results,
         plot_dir=plot_dir,
         inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset_idx,
-        sampled_permutation_indices_by_dataset_idx=sampled_permutation_indices_by_dataset_idx)
+        sampled_permutation_indices_by_dataset_idx=dataset_by_dataset_idx)
 
     print('Successfully completed Exp 08 Omniglot')
 
