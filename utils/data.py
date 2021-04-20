@@ -73,9 +73,11 @@ def generate_mixture_of_unigrams(num_topics: int,
 
 
 def load_newsgroup_dataset(data_dir='data'):
-    categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
+    # categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
+    categories = None
 
     twenty_train = sklearn.datasets.fetch_20newsgroups(
+        data_home=data_dir,
         subset='train',  # can switch to 'test'
         categories=categories,  # set to None for all categories
         shuffle=True,
