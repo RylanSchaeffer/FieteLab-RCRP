@@ -739,7 +739,7 @@ def run_inference_alg(inference_alg_str,
             raise ValueError(f'Unknown likelihood model: {likelihood_model}')
     elif inference_alg_str.startswith('SVI'):
         inference_alg_fn = stochastic_variational_inference
-        learning_rate = 1e-4
+        learning_rate = 5e-4
         # suppose the inference_alg_str is 'SVI (5k Steps)'
         substrs = inference_alg_str.split(' ')
         num_steps = 1000 * int(substrs[1][1:-1])
@@ -750,7 +750,7 @@ def run_inference_alg(inference_alg_str,
                 dirichlet_concentration_param=10.)  # same as R-CRP
         elif likelihood_model == 'multivariate_normal':
             inference_alg_kwargs['model_params'] = dict(
-                gaussian_mean_prior_cov_scaling=6,
+                gaussian_mean_prior_cov_scaling=6.,
                 gaussian_cov_scaling=0.3)
         else:
             raise ValueError
@@ -1107,6 +1107,7 @@ def stochastic_variational_inference(observations,
     if truncation_num_clusters is None:
         # multiply by 2 to be safe
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
+        truncation_num_clusters += 1
 
     if likelihood_model == 'dirichlet_multinomial':
         # TODO: move into separate function
@@ -1175,6 +1176,7 @@ def stochastic_variational_inference(observations,
                     'z',
                     numpyro.distributions.Categorical(
                         probs=q_z_assignment_params))
+
     elif likelihood_model == 'multivariate_normal':
         # TODO: move into own function
         def model(obs):
@@ -1193,7 +1195,7 @@ def stochastic_variational_inference(observations,
             with numpyro.plate('data', num_obs):
                 z = numpyro.sample(
                     'z',
-                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)))
                 numpyro.sample(
                     'obs',
                     numpyro.distributions.MultivariateNormal(
