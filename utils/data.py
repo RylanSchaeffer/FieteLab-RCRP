@@ -74,12 +74,12 @@ def generate_mixture_of_unigrams(num_topics: int,
 
 def load_newsgroup_dataset(data_dir='data'):
     # categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
-    categories = None
+    categories = None # set to None for all categories
 
     twenty_train = sklearn.datasets.fetch_20newsgroups(
         data_home=data_dir,
         subset='train',  # can switch to 'test'
-        categories=categories,  # set to None for all categories
+        categories=categories,
         shuffle=True,
         random_state=0)
 
@@ -93,7 +93,7 @@ def load_newsgroup_dataset(data_dir='data'):
     # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
     # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
     tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
-        max_features=5000,
+        max_features=5000,  # Same as Lin 2013
         sublinear_tf=False)
     observations_tfidf = tfidf_vectorizer.fit_transform(twenty_train.data)
 

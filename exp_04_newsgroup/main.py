@@ -28,7 +28,7 @@ def main():
         plot_dir=plot_dir)
 
     num_obs = newsgroup_dataset_results['assigned_table_seq'].shape[0]
-    num_permutations = 5
+    num_permutations = 3
     inference_algs_results_by_dataset_idx = {}
     dataset_by_dataset_idx = {}
 
@@ -48,6 +48,7 @@ def main():
 
         dataset_inference_algs_results = run_one_dataset(
             dataset_dir=dataset_dir,
+            dataset_idx=dataset_idx,
             newsgroup_dataset_results=newsgroup_dataset_results)
         inference_algs_results_by_dataset_idx[dataset_idx] = dataset_inference_algs_results
 
@@ -60,6 +61,7 @@ def main():
 
 
 def run_one_dataset(newsgroup_dataset_results,
+                    dataset_idx,
                     dataset_dir):
 
     concentration_params = np.linspace(0.1 * np.log(newsgroup_dataset_results['assigned_table_seq'].shape[0]),
@@ -69,8 +71,8 @@ def run_one_dataset(newsgroup_dataset_results,
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',  # deterministically select highest table assignment posterior
-        'Online CRP',  # sample from table assignment posterior; potentially correct
+        # 'SUSG',  # deterministically select highest table assignment posterior
+        # 'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
         # 'HMC-Gibbs (5000 Samples)',
         # 'HMC-Gibbs (20000 Samples)',
@@ -80,27 +82,12 @@ def run_one_dataset(newsgroup_dataset_results,
 
     inference_algs_results = {}
     for inference_alg_str in inference_alg_strs:
-
-        inference_alg_dir = os.path.join(dataset_dir, inference_alg_str)
-        os.makedirs(inference_alg_dir, exist_ok=True)
-        inference_alg_results_path = os.path.join(inference_alg_dir, 'results.joblib')
-
-        # if results do not exist, generate
-        if not os.path.isfile(inference_alg_results_path):
-            inference_alg_results = run_and_plot_inference_alg(
-                newsgroup_dataset_results=newsgroup_dataset_results,
-                inference_alg_str=inference_alg_str,
-                concentration_params=concentration_params,
-                plot_dir=dataset_dir)
-
-            # write to disk and delete results from memory
-            joblib.dump(inference_alg_results, filename=inference_alg_results_path)
-            del inference_alg_results
-
-        # read results from disk
-        inference_alg_results = joblib.load(inference_alg_results_path)
+        inference_alg_results = run_and_plot_inference_alg(
+            newsgroup_dataset_results=newsgroup_dataset_results,
+            inference_alg_str=inference_alg_str,
+            concentration_params=concentration_params,
+            plot_dir=dataset_dir)
         inference_algs_results[inference_alg_str] = inference_alg_results
-
     return inference_algs_results
 
 
@@ -117,28 +104,51 @@ def run_and_plot_inference_alg(newsgroup_dataset_results,
 
     for concentration_param in concentration_params:
 
-        # run inference algorithm
-        # time using timer because https://stackoverflow.com/a/25823885/4570472
-        start_time = timer()
-        inference_alg_results = utils.inference.run_inference_alg(
-            inference_alg_str=inference_alg_str,
-            observations=newsgroup_dataset_results['observations_tfidf'],
-            concentration_param=concentration_param,
-            likelihood_model='dirichlet_multinomial',
-            learning_rate=1e0)
+        inference_alg_results_concentration_param_path = os.path.join(
+            inference_alg_plot_dir,
+            f'results_{np.round(concentration_param, 2)}.joblib')
 
-        # record elapsed time
-        stop_time = timer()
-        runtimes_by_concentration_param[concentration_param] = stop_time - start_time
+        # if results do not exist, generate
+        if not os.path.isfile(inference_alg_results_concentration_param_path):
 
-        # record scores
-        scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
-            true_cluster_labels=newsgroup_dataset_results['assigned_table_seq'],
-            table_assignment_posteriors=inference_alg_results['table_assignment_posteriors'])
-        scores_by_concentration_param[concentration_param] = scores
+            # run inference algorithm
+            # time using timer because https://stackoverflow.com/a/25823885/4570472
+            start_time = timer()
+            inference_alg_concentration_param_results = utils.inference.run_inference_alg(
+                inference_alg_str=inference_alg_str,
+                observations=newsgroup_dataset_results['observations_tfidf'],
+                concentration_param=concentration_param,
+                likelihood_model='dirichlet_multinomial',
+                learning_rate=1e0)
 
-        # count number of clusters
-        num_clusters_by_concentration_param[concentration_param] = len(np.unique(pred_cluster_labels))
+            # record elapsed time
+            stop_time = timer()
+            runtime = stop_time - start_time
+
+            # record scores
+            scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
+                true_cluster_labels=newsgroup_dataset_results['assigned_table_seq'],
+                table_assignment_posteriors=inference_alg_concentration_param_results['table_assignment_posteriors'])
+
+            # count number of clusters
+            num_clusters = len(np.unique(pred_cluster_labels))
+
+            # write to disk and delete
+            data_to_store = dict(
+                inference_alg_concentration_param_results=inference_alg_concentration_param_results,
+                num_clusters=num_clusters,
+                scores=scores,
+                runtime=runtime,
+            )
+
+            joblib.dump(data_to_store,
+                        filename=inference_alg_results_concentration_param_path)
+            del inference_alg_concentration_param_results
+            del data_to_store
+
+        # read results from disk
+        stored_data = joblib.load(
+            inference_alg_results_concentration_param_path)
 
         # plot_inference_results(
         #     sampled_mog_results=sampled_mog_results,
@@ -146,6 +156,13 @@ def run_and_plot_inference_alg(newsgroup_dataset_results,
         #     inference_alg_str=inference_alg_str,
         #     concentration_param=concentration_param,
         #     plot_dir=inference_alg_plot_dir)
+
+        num_clusters_by_concentration_param[concentration_param] = stored_data[
+            'num_clusters']
+        scores_by_concentration_param[concentration_param] = stored_data[
+            'scores']
+        runtimes_by_concentration_param[concentration_param] = stored_data[
+            'runtime']
 
         print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
 
