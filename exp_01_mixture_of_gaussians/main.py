@@ -6,6 +6,7 @@ from exp_01_mixture_of_gaussians.plot import *
 import utils.data
 import utils.inference
 import utils.metrics
+import utils.plot
 
 
 def main():
@@ -22,12 +23,12 @@ def main():
         print(f'Dataset Index: {dataset_idx}')
         dataset_dir = os.path.join(plot_dir, f'dataset={dataset_idx}')
         os.makedirs(dataset_dir, exist_ok=True)
-        dataset_inference_algs_results, dataset_sampled_mix_of_gussians_results = run_one_dataset(
+        dataset_inference_algs_results, dataset_sampled_mix_of_gaussians_results = run_one_dataset(
             dataset_dir=dataset_dir)
         inference_algs_results_by_dataset_idx[dataset_idx] = dataset_inference_algs_results
-        sampled_mog_results_by_dataset_idx[dataset_idx] = dataset_sampled_mix_of_gussians_results
+        sampled_mog_results_by_dataset_idx[dataset_idx] = dataset_sampled_mix_of_gaussians_results
 
-    plot_inference_algs_comparison(
+    utils.plot.plot_inference_algs_comparison(
         plot_dir=plot_dir,
         inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset_idx,
         dataset_by_dataset_idx=sampled_mog_results_by_dataset_idx)
