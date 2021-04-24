@@ -7,4 +7,4 @@
 #SBATCH --mail-type=FAIL
 
 export PYTHONPATH=.
-python -u exp_03_language_modeling/main.py        # -u flushes output buffer immediately
+python -u exp_03_reddit/main.py        # -u flushes output buffer immediately
