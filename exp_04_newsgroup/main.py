@@ -70,9 +70,9 @@ def run_one_dataset(newsgroup_dataset_results,
 
     inference_alg_strs = [
         # online algorithms
-        'R-CRP',
+        # 'R-CRP',
         # 'SUSG',  # deterministically select highest table assignment posterior
-        # 'Online CRP',  # sample from table assignment posterior; potentially correct
+        'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
         # 'HMC-Gibbs (5000 Samples)',
         # 'HMC-Gibbs (20000 Samples)',

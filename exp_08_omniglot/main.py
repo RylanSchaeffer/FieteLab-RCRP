@@ -133,7 +133,6 @@ def run_and_plot_inference_alg(omniglot_dataset_results,
             scores, pred_cluster_labels = utils.metrics.score_predicted_clusters(
                 true_cluster_labels=omniglot_dataset_results['assigned_table_seq'],
                 table_assignment_posteriors=inference_alg_concentration_param_results['table_assignment_posteriors'])
-            scores_by_concentration_param[concentration_param] = scores
 
             # count number of clusters
             num_clusters = len(np.unique(pred_cluster_labels))
