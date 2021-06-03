@@ -4,8 +4,8 @@ import pandas as pd
 import scipy.stats
 from sympy.functions.combinatorial.numbers import stirling
 
+import plot
 from utils.data import vectorized_sample_sequence_from_crp
-from plot import *
 
 
 def main():
@@ -34,28 +34,28 @@ def main():
         alphas=alphas,
         exp_dir=exp_dir)
 
-    # plot_chinese_restaurant_table_dist_by_customer_num(
-    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-    #     plot_dir=plot_dir)
-    # 
-    # plot_recursion_visualization(
-    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-    #     analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
-    #     # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-    #     plot_dir=plot_dir)
-    # 
-    # plot_analytics_vs_monte_carlo_table_occupancies(
-    #     sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
-    #     analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-    #     plot_dir=plot_dir)
-    # 
-    # plot_analytics_vs_monte_carlo_customer_tables(
-    #     sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
-    #     analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
-    #     plot_dir=plot_dir)
+    plot.plot_chinese_restaurant_table_dist_by_customer_num(
+        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+        plot_dir=plot_dir)
+
+    plot.plot_recursion_visualization(
+        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        analytical_table_distributions_by_alpha_by_T=analytical_table_distributions_by_alpha_by_T,
+        # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+        plot_dir=plot_dir)
+
+    plot.plot_analytics_vs_monte_carlo_table_occupancies(
+        sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
+        analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
+        plot_dir=plot_dir)
+
+    plot.plot_analytics_vs_monte_carlo_customer_tables(
+        sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
+        analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        plot_dir=plot_dir)
 
     num_reps = 10
-    means_per_num_samples_per_alpha, sems_per_num_samples_per_alpha = \
+    error_means_per_num_samples_per_alpha, error_sems_per_num_samples_per_alpha = \
         calc_analytical_vs_monte_carlo_mse(
             T=T,
             alphas=alphas,
@@ -64,9 +64,9 @@ def main():
             sample_subset_size=num_samples,
             analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha)
 
-    plot_analytical_vs_monte_carlo_mse(
-        means_per_num_samples_per_alpha=means_per_num_samples_per_alpha,
-        sems_per_num_samples_per_alpha=sems_per_num_samples_per_alpha,
+    plot.plot_analytical_vs_monte_carlo_mse(
+        error_means_per_num_samples_per_alpha=error_means_per_num_samples_per_alpha,
+        error_sems_per_num_samples_per_alpha=error_sems_per_num_samples_per_alpha,
         num_reps=num_reps,
         plot_dir=plot_dir)
 

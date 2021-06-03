@@ -15,39 +15,6 @@ alphas_color_map = {
 }
 
 
-def plot_chinese_restaurant_table_dist_by_customer_num(analytical_table_distributions_by_alpha_by_T,
-                                                       plot_dir):
-    # plot how the CRT table distribution changes for T customers
-    alphas = list(analytical_table_distributions_by_alpha_by_T.keys())
-    T = len(analytical_table_distributions_by_alpha_by_T[alphas[0]])
-    table_nums = 1 + np.arange(T)
-    cmap = plt.get_cmap('jet_r')
-    for alpha in alphas:
-        for t in table_nums:
-            plt.plot(table_nums,
-                     analytical_table_distributions_by_alpha_by_T[alpha][t],
-                     # label=f'T={t}',
-                     color=cmap(float(t) / T))
-
-        # https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
-        norm = mpl.colors.Normalize(vmin=1, vmax=T)
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        # sm.set_array([])
-        colorbar = plt.colorbar(sm,
-                                ticks=np.arange(1, T + 1, 5),
-                                # boundaries=np.arange(-0.05, T + 0.1, .1)
-                                )
-        colorbar.set_label('Number of Customers')
-        plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
-        plt.xlabel(r'Number of Tables after T Customers')
-        plt.ylabel(r'P(Number of Tables after T Customers)')
-        fig.savefig(os.path.join(plot_dir, f'crt_table_distribution_alpha={alpha}.png'),
-                    bbox_inches='tight',
-                    dpi=300)
-        # plt.show()
-        plt.close()
-
-
 def plot_analytics_vs_monte_carlo_customer_tables(sampled_customer_tables_by_alpha,
                                                   analytical_customer_tables_by_alpha,
                                                   plot_dir):
@@ -137,6 +104,66 @@ def plot_analytics_vs_monte_carlo_table_occupancies(sampled_table_occupancies_by
     plt.close()
 
 
+def plot_analytical_vs_monte_carlo_mse(error_means_per_num_samples_per_alpha,
+                                       error_sems_per_num_samples_per_alpha,
+                                       num_reps,
+                                       plot_dir):
+
+    alphas = list(error_sems_per_num_samples_per_alpha.keys())
+
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 4))
+    for alpha in alphas:
+        ax.errorbar(x=list(error_means_per_num_samples_per_alpha[alpha].keys()),
+                    y=list(error_means_per_num_samples_per_alpha[alpha].values()),
+                    yerr=list(error_sems_per_num_samples_per_alpha[alpha].values()),
+                    label=rf'$\alpha$={alpha}',
+                    c=alphas_color_map[alpha])
+    ax.legend(title=f'Num Repeats: {num_reps}')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$(Analytic - Monte Carlo Estimate)^2$')
+    # ax.set_ylabel(r'$\mathbb{E}_D[\sum_k (\mathbb{E}[N_{T, k}] - \frac{1}{S} \sum_{s=1}^S N_{T, k}^{(s)})^2]$')
+    ax.set_xlabel('Number of Monte Carlo Samples')
+    fig.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
+                bbox_inches='tight',
+                dpi=300)
+    # plt.show()
+    plt.close()
+
+
+def plot_chinese_restaurant_table_dist_by_customer_num(analytical_table_distributions_by_alpha_by_T,
+                                                       plot_dir):
+    # plot how the CRT table distribution changes for T customers
+    alphas = list(analytical_table_distributions_by_alpha_by_T.keys())
+    T = len(analytical_table_distributions_by_alpha_by_T[alphas[0]])
+    table_nums = 1 + np.arange(T)
+    cmap = plt.get_cmap('jet_r')
+    for alpha in alphas:
+        for t in table_nums:
+            plt.plot(table_nums,
+                     analytical_table_distributions_by_alpha_by_T[alpha][t],
+                     # label=f'T={t}',
+                     color=cmap(float(t) / T))
+
+        # https://stackoverflow.com/questions/43805821/matplotlib-add-colorbar-to-non-mappable-object
+        norm = mpl.colors.Normalize(vmin=1, vmax=T)
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+        colorbar = plt.colorbar(sm,
+                                ticks=np.arange(1, T + 1, 5),
+                                # boundaries=np.arange(-0.05, T + 0.1, .1)
+                                )
+        colorbar.set_label('Number of Customers')
+        plt.title(fr'Chinese Restaurant Table Distribution ($\alpha$={alpha})')
+        plt.xlabel(r'Number of Tables after T Customers')
+        plt.ylabel(r'P(Number of Tables after T Customers)')
+        plt.savefig(os.path.join(plot_dir, f'crt_table_distribution_alpha={alpha}.png'),
+                    bbox_inches='tight',
+                    dpi=300)
+        # plt.show()
+        plt.close()
+
+
 def plot_recursion_visualization(analytical_customer_tables_by_alpha,
                                  analytical_table_distributions_by_alpha_by_T,
                                  plot_dir):
@@ -206,30 +233,3 @@ def plot_recursion_visualization(analytical_customer_tables_by_alpha,
                     dpi=300)
         # plt.show()
         plt.close()
-
-
-def plot_analytical_vs_monte_carlo_mse(means_per_num_samples_per_alpha,
-                                       sems_per_num_samples_per_alpha,
-                                       num_reps,
-                                       plot_dir):
-
-    alphas = list(sems_per_num_samples_per_alpha.keys())
-
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 4))
-    for alpha in alphas:
-        ax.errorbar(x=list(means_per_num_samples_per_alpha[alpha].keys()),
-                    y=list(means_per_num_samples_per_alpha[alpha].values()),
-                    yerr=list(sems_per_num_samples_per_alpha[alpha].values()),
-                    label=rf'$\alpha$={alpha}',
-                    c=alphas_color_map[alpha])
-    ax.legend(title=f'Num Repeats: {num_reps}')
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_ylabel(r'$(Analytic - Monte Carlo Estimate)^2$')
-    # ax.set_ylabel(r'$\mathbb{E}_D[\sum_k (\mathbb{E}[N_{T, k}] - \frac{1}{S} \sum_{s=1}^S N_{T, k}^{(s)})^2]$')
-    ax.set_xlabel('Number of Monte Carlo Samples')
-    fig.savefig(os.path.join(plot_dir, f'crp_expected_mse.png'),
-                bbox_inches='tight',
-                dpi=300)
-    # plt.show()
-    plt.close()
