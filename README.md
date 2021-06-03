@@ -2,7 +2,7 @@
 
 This code corresponds to the [UAI 2021](https://www.auai.org/uai2021/) paper.
 
-![](exp_00_crp_prior/plots/crt_table_distribution_alpha=15.37.png)
+![](exp_00_crp_prior/plots/crp_recursion_alpha=30.91.png)
 
 ## Setup
 
