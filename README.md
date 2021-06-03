@@ -1,11 +1,18 @@
 # Efficient Online Inference for Nonparametric Mixture Time Series
 
 This code corresponds to our [UAI 2021](https://www.auai.org/uai2021/) paper.
-In this paper, we provide an efficient streaming/online inference algorithm
+In this paper, we provide an efficient streaming inference algorithm
 for infinite mixture models using a novel Bayesian recursion on the Chinese
 Restaurant Process.
 
 ![](exp_00_crp_prior/plots/crp_recursion_alpha=30.91.png)
+
+To make streaming inference possible, we break the CRP's conditional distribution
+$$p(z_t|z_{<t}, \alpha)$$ on the complete history by replacing it with a marginal 
+distribution $$p(z_t|\alpha)$$. The running sum of the previous marginal distributions 
+$$\sum_{t' < t} p(z_{t'} = k)$$ (left) and the Chinese restaurant table distribution 
+$$p(K_{t-1} = k)$$ (middle) compete to determine the next marginal distribution 
+$$p(z_t = k)$$ (right). Note the logarithmic scaling.
 
 ## Setup
 
