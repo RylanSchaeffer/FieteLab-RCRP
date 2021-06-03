@@ -53,13 +53,13 @@ def run_one_dataset(dataset_dir,
 
     inference_alg_strs = [
         # online algorithms
-        # 'R-CRP',
-        # 'SUSG',  # deterministically select highest table assignment posterior
-        # 'Online CRP',  # sample from table assignment posterior; potentially correct
+        'R-CRP',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
-        # 'HMC-Gibbs (5000 Samples)',
-        # 'HMC-Gibbs (20000 Samples)',
-        # 'SVI (5k Steps)',
+        'HMC-Gibbs (5000 Samples)',
+        'HMC-Gibbs (20000 Samples)',
+        'SVI (5k Steps)',
         'SVI (20k Steps)',
     ]
 

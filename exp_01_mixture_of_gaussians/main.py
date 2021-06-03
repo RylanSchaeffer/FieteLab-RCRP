@@ -33,7 +33,7 @@ def main():
         inference_algs_results_by_dataset_idx=inference_algs_results_by_dataset_idx,
         dataset_by_dataset_idx=sampled_mog_results_by_dataset_idx)
 
-    print('Successfully completed Exp 01 Mixture of Gaussians')
+    print(f'Successfully completed Exp 01 Mixture of Gaussians with {num_datasets} datasets')
 
 
 def run_one_dataset(dataset_dir,
@@ -57,14 +57,14 @@ def run_one_dataset(dataset_dir,
 
     inference_alg_strs = [
         # online algorithms
-        # 'R-CRP',
-        # 'SUSG',  # deterministically select highest table assignment posterior
-        # 'Online CRP',  # sample from table assignment posterior; potentially correct
-        # 'DP-Means (online)',  # deterministically select highest assignment posterior
+        'R-CRP',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
+        'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         # 'DP-Means (offline)',
-        'HMC-Gibbs (5000 Samples)',
-        'HMC-Gibbs (20000 Samples)',
+        # 'HMC-Gibbs (5000 Samples)',
+        # 'HMC-Gibbs (20000 Samples)',
         # 'SVI (25k Steps)',
         # 'SVI (50k Steps)',
         # 'Variational Bayes (15 Init, 30 Iter)',
@@ -102,6 +102,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
 
         # if results do not exist, generate
         if not os.path.isfile(inference_alg_results_concentration_param_path):
+            print('Generating {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
 
             # run inference algorithm
             # time using timer because https://stackoverflow.com/a/25823885/4570472
@@ -135,19 +136,20 @@ def run_and_plot_inference_alg(sampled_mog_results,
 
             joblib.dump(data_to_store,
                         filename=inference_alg_results_concentration_param_path)
+
+            plot_inference_results(
+                sampled_mog_results=sampled_mog_results,
+                inference_results=inference_alg_concentration_param_results,
+                inference_alg_str=inference_alg_str,
+                concentration_param=concentration_param,
+                plot_dir=inference_alg_plot_dir)
+
             del inference_alg_concentration_param_results
             del data_to_store
 
         # read results from disk
         stored_data = joblib.load(
             inference_alg_results_concentration_param_path)
-
-        plot_inference_results(
-            sampled_mog_results=sampled_mog_results,
-            inference_results=stored_data['inference_alg_concentration_param_results'],
-            inference_alg_str=inference_alg_str,
-            concentration_param=concentration_param,
-            plot_dir=inference_alg_plot_dir)
 
         num_clusters_by_concentration_param[concentration_param] = stored_data[
             'num_clusters']
@@ -156,7 +158,7 @@ def run_and_plot_inference_alg(sampled_mog_results,
         runtimes_by_concentration_param[concentration_param] = stored_data[
             'runtime']
 
-        print('Finished {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
+        print('Loaded {} concentration_param={:.2f}'.format(inference_alg_str, concentration_param))
 
     inference_alg_concentration_param_results = dict(
         num_clusters_by_param=num_clusters_by_concentration_param,
