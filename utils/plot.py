@@ -1,6 +1,4 @@
 # Common plotting functions
-
-
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -111,7 +109,7 @@ def plot_inference_algs_scores_by_param(scores_by_dataset_by_inference_alg_by_sc
         plt.legend()
         plt.xlabel(r'Concentration Parameter ($\alpha$ or $\lambda$)')
         plt.ylabel(scoring_metric)
-        plt.ylim(0., 1.)
+        # plt.ylim(0., 1.)
         plt.gca().set_xlim(left=0)
         plt.savefig(os.path.join(plot_dir, f'comparison_score={scoring_metric}.png'),
                     bbox_inches='tight',
