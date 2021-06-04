@@ -69,33 +69,37 @@ def plot_analytics_vs_monte_carlo_table_occupancies(sampled_table_occupancies_by
     alphas = list(sampled_table_occupancies_by_alpha.keys())
     num_samples, T = sampled_table_occupancies_by_alpha[alphas[0]].shape
     table_nums = 1 + np.arange(T)
-    fig, axes = plt.subplots(nrows=1, ncols=len(alphas), figsize=(4 * len(alphas), 4))
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(8, 8))
     for ax_idx, (alpha, crp_samples) in enumerate(sampled_table_occupancies_by_alpha.items()):
+        row = ax_idx % 2
+        col = int(ax_idx / 2)
         table_cutoff = alpha * np.log(1 + T / alpha)
         empiric_table_occupancies_mean_by_repeat = np.mean(crp_samples, axis=0)
         empiric_table_occupancies_sem = scipy.stats.sem(crp_samples, axis=0)
-        axes[ax_idx].set_title(rf'CRP($\alpha$={alpha})')
+        axes[row, col].set_title(rf'CRP($\alpha$={alpha})')
         for num_samples_idx in range(200):
-            axes[ax_idx].plot(table_nums, crp_samples[num_samples_idx, :], alpha=0.01, color='k')
-        axes[ax_idx].errorbar(x=table_nums,
-                              y=empiric_table_occupancies_mean_by_repeat,
-                              yerr=empiric_table_occupancies_sem,
-                              # linewidth=2,
-                              fmt='--',
-                              color='k',
-                              label=f'Empiric (N={num_samples})')
-        axes[ax_idx].scatter(table_nums[:len(analytical_table_occupancies_by_alpha[alpha])],
-                             analytical_table_occupancies_by_alpha[alpha],
-                             # '--',
-                             marker='d',
-                             color=alphas_color_map[alpha],
-                             # linewidth=2,
-                             label=f'Analytic')
+            axes[row, col].plot(table_nums, crp_samples[num_samples_idx, :], alpha=0.01, color='k')
+        axes[row, col].errorbar(x=table_nums,
+                                y=empiric_table_occupancies_mean_by_repeat,
+                                yerr=empiric_table_occupancies_sem,
+                                # linewidth=2,
+                                fmt='--',
+                                color='k',
+                                label=f'Empiric (N={num_samples})')
+        axes[row, col].scatter(table_nums[:len(analytical_table_occupancies_by_alpha[alpha])],
+                               analytical_table_occupancies_by_alpha[alpha],
+                               # '--',
+                               marker='d',
+                               color=alphas_color_map[alpha],
+                               # linewidth=2,
+                               label=f'Analytic')
         print(f'Plotted alpha={alpha}')
-        axes[ax_idx].legend()
-        axes[ax_idx].set_xlabel('Table Number')
-        axes[ax_idx].set_ylabel('Table Occupancy')
-        axes[ax_idx].set_xlim(1, table_cutoff)
+        axes[row, col].legend()
+        if col == 0:
+            axes[row, col].set_ylabel('Num. Table Occupants')
+        if row == 1:
+            axes[row, col].set_xlabel('Table Number')
+        axes[row, col].set_xlim(1, table_cutoff)
 
     fig.savefig(os.path.join(plot_dir, f'analytics_vs_monte_carlo_table_occupancies.png'),
                 bbox_inches='tight',
@@ -108,7 +112,6 @@ def plot_analytical_vs_monte_carlo_mse(error_means_per_num_samples_per_alpha,
                                        error_sems_per_num_samples_per_alpha,
                                        num_reps,
                                        plot_dir):
-
     alphas = list(error_sems_per_num_samples_per_alpha.keys())
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 4))

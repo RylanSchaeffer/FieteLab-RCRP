@@ -44,14 +44,14 @@ def main():
         # analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
         plot_dir=plot_dir)
 
-    plot.plot_analytics_vs_monte_carlo_table_occupancies(
-        sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
-        analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
-        plot_dir=plot_dir)
-
     plot.plot_analytics_vs_monte_carlo_customer_tables(
         sampled_customer_tables_by_alpha=sampled_customer_tables_by_alpha,
         analytical_customer_tables_by_alpha=analytical_customer_tables_by_alpha,
+        plot_dir=plot_dir)
+
+    plot.plot_analytics_vs_monte_carlo_table_occupancies(
+        sampled_table_occupancies_by_alpha=sampled_table_occupancies_by_alpha,
+        analytical_table_occupancies_by_alpha=analytical_table_occupancies_by_alpha,
         plot_dir=plot_dir)
 
     num_reps = 10
