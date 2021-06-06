@@ -61,10 +61,10 @@ def generate_mixture_of_unigrams(num_topics: int,
     # sort stick weights to be descending in magnitude
     stick_weights = np.sort(stick_weights)[::-1]
 
-    topics_parameters = np.zeros((num_topics, vocab_dim))
-    for topic_index in range(num_topics):
-        gam_t = np.random.gamma(prior_over_topic_parameters, size=vocab_dim)
-        topics_parameters[topic_index, :] = gam_t / np.sum(gam_t)
+    topics_parameters = np.random.dirichlet(
+        prior_over_topic_parameters * np.ones(vocab_dim),
+        size=num_topics)
+    assert topics_parameters.shape == (num_topics, vocab_dim)
 
     mixture_of_unigrams = dict(stick_weights=stick_weights,
                                topics_parameters=topics_parameters)
@@ -394,7 +394,7 @@ def sample_sequence_from_mixture_of_unigrams(seq_len: int = 450,
     # create sequence of Multinomial samples from (num_topics, vocab_dim)
     # draw a Sample of num_docs documents each of size doc_len
     num_topics_in_corpus = 0
-    # rejection sample till we get dataset with correct number of topics
+    # rejection sample till we get dataset with desired number of topics
     num_samples = 0
     while num_topics_in_corpus != num_topics:
         assigned_table_seq_one_hot = np.random.multinomial(
