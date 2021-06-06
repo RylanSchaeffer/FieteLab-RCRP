@@ -727,7 +727,10 @@ def run_inference_alg(inference_alg_str,
         inference_alg_kwargs['num_samples'] = num_samples
         inference_alg_kwargs['truncation_num_clusters'] = 12
 
-        if likelihood_model == 'dirichlet_multinomial':
+        if likelihood_model == 'categorical':
+            inference_alg_kwargs['model_params'] = dict(
+                dirichlet_concentration_param=1.)  # same as R-CRP
+        elif likelihood_model == 'dirichlet_multinomial':
             inference_alg_kwargs['model_params'] = dict(
                 dirichlet_concentration_param=10.)  # same as R-CRP
         elif likelihood_model == 'multivariate_normal':
@@ -745,7 +748,10 @@ def run_inference_alg(inference_alg_str,
         num_steps = 1000 * int(substrs[1][1:-1])
         inference_alg_kwargs['num_steps'] = num_steps
         # Note: these are the ground truth parameters
-        if likelihood_model == 'dirichlet_multinomial':
+        if likelihood_model == 'categorical':
+            inference_alg_kwargs['model_params'] = dict(
+                dirichlet_concentration_param=1.)  # same as R-CRP
+        elif likelihood_model == 'dirichlet_multinomial':
             inference_alg_kwargs['model_params'] = dict(
                 dirichlet_concentration_param=10.)  # same as R-CRP
         elif likelihood_model == 'multivariate_normal':
@@ -793,7 +799,32 @@ def sampling_hmc_gibbs(observations,
         # multiply by 2 for safety
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
 
-    if likelihood_model == 'dirichlet_multinomial':
+    if likelihood_model == 'categorical':
+        # https://web.archive.org/web/20160722120155/https://ariddell.org/simple-topic-model.html
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
+
+            with numpyro.plate('topic_concentration_plate', truncation_num_clusters):
+                topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=jnp.full(obs_dim,
+                                               fill_value=model_params['dirichlet_concentration_param'])))
+
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.Multinomial(
+                        probs=topics_concentrations[z]),
+                    obs=obs)
+
+    elif likelihood_model == 'dirichlet_multinomial':
         # TODO: move into separate function
         def model(obs):
             with numpyro.plate('beta_plate', truncation_num_clusters - 1):
@@ -806,7 +837,7 @@ def sampling_hmc_gibbs(observations,
                     'topics_concentrations',
                     numpyro.distributions.Dirichlet(
                         concentration=jnp.full(obs_dim,
-                                               fill_value=model_params['dirichlet_concentration_param'])))  # TODO: is mask necessary?
+                                               fill_value=model_params['dirichlet_concentration_param'])))
 
             with numpyro.plate('data', num_obs):
                 z = numpyro.sample(
@@ -817,6 +848,8 @@ def sampling_hmc_gibbs(observations,
                     numpyro.distributions.DirichletMultinomial(
                         concentration=topics_concentrations[z]),
                     obs=obs)
+        raise NotImplementedError
+
     elif likelihood_model == 'multivariate_normal':
         # TODO: move into own function
         def model(obs):
@@ -852,7 +885,11 @@ def sampling_hmc_gibbs(observations,
     # mcmc.print_summary()
     samples = mcmc.get_samples()
 
-    if likelihood_model == 'dirichlet_multinomial':
+    if likelihood_model == 'categorical':
+        parameters = dict(
+            beta=np.mean(np.array(samples['beta'][-1000:, :]), axis=0),
+            topics_concentrations=np.mean(np.array(samples['topics_concentrations'][-1000:, :, :]), axis=0))
+    elif likelihood_model == 'dirichlet_multinomial':
         parameters = dict(
             beta=np.mean(np.array(samples['beta'][-1000:, :]), axis=0),
             topics_concentrations=np.mean(np.array(samples['topics_concentrations'][-1000:, :, :]), axis=0))
@@ -1109,7 +1146,75 @@ def stochastic_variational_inference(observations,
         truncation_num_clusters = 2 * int(np.ceil(concentration_param * np.log(1 + num_obs / concentration_param)))
         truncation_num_clusters += 1
 
-    if likelihood_model == 'dirichlet_multinomial':
+    if likelihood_model == 'categorical':
+        # TODO: move into separate function
+        def model(obs):
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(1, concentration_param))
+
+            with numpyro.plate('topic_concentrations_plate', truncation_num_clusters):
+                topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=jnp.full(shape=obs_dim,
+                                               fill_value=model_params['dirichlet_concentration_param'])))
+
+            with numpyro.plate('data', num_obs):
+                z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(mix_weights(beta=beta)).mask(False))  # TODO: is mask necessary?
+                numpyro.sample(
+                    'obs',
+                    numpyro.distributions.Multinomial(
+                        probs=topics_concentrations[z]),
+                    obs=obs)
+
+        def guide(obs):
+            q_beta_params = numpyro.param(
+                'q_beta_params',
+                init_value=jax.random.uniform(key=jax.random.PRNGKey(0),
+                                              minval=0,
+                                              maxval=2,
+                                              shape=(truncation_num_clusters - 1,)),
+                constraint=numpyro.distributions.constraints.positive)
+
+            with numpyro.plate('beta_plate', truncation_num_clusters - 1):
+                q_beta = numpyro.sample(
+                    'beta',
+                    numpyro.distributions.Beta(
+                        concentration0=jnp.ones(truncation_num_clusters - 1),
+                        concentration1=q_beta_params))
+
+            # TODO: why is shape = (truncation, obs dim)?
+            q_topics_concentrations_params = numpyro.param(
+                f'q_topics_concentrations_params',
+                init_value=jax.random.exponential(key=jax.random.PRNGKey(0),
+                                                  shape=(truncation_num_clusters, obs_dim)),
+                constraint=numpyro.distributions.constraints.positive)
+
+            with numpyro.plate('topic_concentrations_plate', truncation_num_clusters):
+                q_topics_concentrations = numpyro.sample(
+                    'topics_concentrations',
+                    numpyro.distributions.Dirichlet(
+                        concentration=q_topics_concentrations_params))
+
+            q_z_assignment_params = numpyro.param(
+                'q_z_assignment_params',
+                init_value=jax.random.dirichlet(key=jax.random.PRNGKey(0),
+                                                alpha=jnp.ones(
+                                                    truncation_num_clusters) / truncation_num_clusters,
+                                                shape=(num_obs,)),
+                constraint=numpyro.distributions.constraints.simplex)
+
+            with numpyro.plate('data', num_obs):
+                q_z = numpyro.sample(
+                    'z',
+                    numpyro.distributions.Categorical(
+                        probs=q_z_assignment_params))
+
+    elif likelihood_model == 'dirichlet_multinomial':
         # TODO: move into separate function
         def model(obs):
             with numpyro.plate('beta_plate', truncation_num_clusters - 1):
@@ -1260,7 +1365,11 @@ def stochastic_variational_inference(observations,
                          obs=observations,
                          progress_bar=True)
 
-    if likelihood_model == 'dirichlet_multinomial':
+    if likelihood_model == 'categorical':
+        parameters = dict(
+            q_beta_params=np.array(svi_result.params['q_beta_params']),
+            topics_concentrations=np.array(svi_result.params['q_topics_concentrations_params']))
+    elif likelihood_model == 'dirichlet_multinomial':
         parameters = dict(
             q_beta_params=np.array(svi_result.params['q_beta_params']),
             topics_concentrations=np.array(svi_result.params['q_topics_concentrations_params']))
