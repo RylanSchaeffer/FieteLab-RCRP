@@ -72,9 +72,10 @@ def generate_mixture_of_unigrams(num_topics: int,
     return mixture_of_unigrams
 
 
-def load_newsgroup_dataset(data_dir='data'):
+def load_newsgroup_dataset(data_dir='data',
+                           num_data=None):
     # categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
-    categories = None # set to None for all categories
+    categories = None  # set to None for all categories
 
     twenty_train = sklearn.datasets.fetch_20newsgroups(
         data_home=data_dir,
@@ -86,6 +87,13 @@ def load_newsgroup_dataset(data_dir='data'):
     class_names = np.array(twenty_train.target_names)
     true_cluster_labels = twenty_train.target
     true_cluster_label_strs = class_names[true_cluster_labels]
+    observations = twenty_train.data
+
+    if num_data is None:
+        num_data = len(class_names)
+    observations = observations[:num_data]
+    true_cluster_labels = true_cluster_labels[:num_data]
+    true_cluster_label_strs = true_cluster_label_strs[:num_data]
 
     # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
     # equivalent to CountVectorizer() + TfidfTransformer()
@@ -95,7 +103,7 @@ def load_newsgroup_dataset(data_dir='data'):
     tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
         max_features=5000,  # Same as Lin 2013
         sublinear_tf=False)
-    observations_tfidf = tfidf_vectorizer.fit_transform(twenty_train.data)
+    observations_tfidf = tfidf_vectorizer.fit_transform(observations)
 
     # quoting from Lin NeurIPS 2013:
     # We pruned the vocabulary to 5000 words by removing stop words and
@@ -117,26 +125,30 @@ def load_newsgroup_dataset(data_dir='data'):
     return newsgroup_dataset_results
 
 
-def load_omniglot_dataset(data_dir='data'):
+def load_omniglot_dataset(data_dir='data',
+                          num_data: int = None,
+                          center_crop: bool = True,
+                          avg_pool: bool = True):
 
     # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
+    transforms = [torchvision.transforms.ToTensor()]
+    if center_crop:
+        transforms.append(torchvision.transforms.CenterCrop((80, 80)))
+    if avg_pool:
+        transforms.append(torchvision.transforms.Lambda(
+                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=9, stride=3)))
+
     omniglot_dataset = torchvision.datasets.Omniglot(
         root=data_dir,
         download=True,
-        transform=torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            # torchvision.transforms.CenterCrop((80, 80)),
-            torchvision.transforms.Lambda(
-                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=9, stride=3)),
-            # torchvision.transforms.GaussianBlur(kernel_size=11),
-            # torchvision.transforms.Resize((10, 10)),
-        ])
-    )
+        transform=torchvision.transforms.Compose(transforms))
 
     # truncate dataset for now
     # character_classes = [images_and_classes[1] for images_and_classes in
     #                      omniglot_dataset._flat_character_images]
-    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:1200]
+    if num_data is None:
+        num_data = len(omniglot_dataset._flat_character_images)
+    omniglot_dataset._flat_character_images = omniglot_dataset._flat_character_images[:num_data]
     dataset_size = len(omniglot_dataset._flat_character_images)
 
     omniglot_dataloader = torch.utils.data.DataLoader(

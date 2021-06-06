@@ -21,7 +21,10 @@ def main():
     torch.manual_seed(0)
 
     omniglot_dataset_results = utils.data.load_omniglot_dataset(
-        data_dir='data')
+        data_dir='data',
+        num_data=1200,
+        center_crop=True,
+        avg_pool=True)
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(
@@ -64,14 +67,14 @@ def run_one_dataset(omniglot_dataset_results,
                     dataset_dir):
 
     concentration_params = np.linspace(0.1*np.log(omniglot_dataset_results['assigned_table_seq'].shape[0]),
-                                       10*np.log(omniglot_dataset_results['assigned_table_seq'].shape[0]),
+                                       3*np.log(omniglot_dataset_results['assigned_table_seq'].shape[0]),
                                        11)
 
     inference_alg_strs = [
         # online algorithms
-        # 'R-CRP',
-        # 'SUSG',  # deterministically select highest table assignment posterior
-        # 'Online CRP',  # sample from table assignment posterior; potentially correct
+        'R-CRP',
+        'SUSG',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
         'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         # 'DP-Means (offline)',
@@ -114,6 +117,7 @@ def run_and_plot_inference_alg(omniglot_dataset_results,
 
         # if results do not exist, generate
         if not os.path.isfile(inference_alg_results_concentration_param_path):
+            print(f'Generating {inference_alg_results_concentration_param_path}')
 
             # run inference algorithm
             # time using timer because https://stackoverflow.com/a/25823885/4570472
@@ -149,6 +153,8 @@ def run_and_plot_inference_alg(omniglot_dataset_results,
                         filename=inference_alg_results_concentration_param_path)
             del inference_alg_concentration_param_results
             del data_to_store
+        else:
+            print(f'Loading {inference_alg_results_concentration_param_path} from disk...')
 
         # read results from disk
         stored_data = joblib.load(

@@ -185,7 +185,7 @@ def plot_num_clusters_by_num_obs(true_cluster_labels,
     plt.legend()
 
     # make axes equal
-    plt.axis('square')
+    # plt.axis('square')
 
     plt.savefig(os.path.join(plot_dir, 'fitted_alpha.png'),
                 bbox_inches='tight',
