@@ -15,14 +15,16 @@ import utils.plot
 
 
 def main():
-    plot_dir = 'exp_08_omniglot/plots'
+
+    num_data = 1200
+    plot_dir = f'exp_08_omniglot/plots_cropped_pool_pc=20_data={num_data}'
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
     torch.manual_seed(0)
 
     omniglot_dataset_results = utils.data.load_omniglot_dataset(
         data_dir='data',
-        num_data=1200,
+        num_data=num_data,
         center_crop=True,
         avg_pool=True)
 
@@ -73,18 +75,14 @@ def run_one_dataset(omniglot_dataset_results,
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',  # deterministically select highest table assignment posterior
-        'Online CRP',  # sample from table assignment posterior; potentially correct
-        'DP-Means (online)',  # deterministically select highest assignment posterior
+        # 'SUGS',  # deterministically select highest table assignment posterior
+        # 'Online CRP',  # sample from table assignment posterior; potentially correct
+        # 'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         # 'DP-Means (offline)',
-        # 'HMC-Gibbs (5000 Samples)',
         # 'HMC-Gibbs (20000 Samples)',
-        # 'SVI (5k Steps)',
         # 'SVI (20k Steps)',
         # 'Variational Bayes (15 Init, 30 Iter)',
-        # 'Variational Bayes (5 Init, 30 Iter)',
-        # 'Variational Bayes (1 Init, 8 Iter)',
     ]
 
     inference_algs_results = {}
