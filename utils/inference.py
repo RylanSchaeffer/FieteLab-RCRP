@@ -704,9 +704,9 @@ def run_inference_alg(inference_alg_str,
         inference_alg_fn = recursive_crp
     elif inference_alg_str == 'Online CRP':
         inference_alg_fn = online_crp
-    elif inference_alg_str == 'SUSG':
+    elif inference_alg_str == 'SUGS':
         inference_alg_fn = sequential_updating_and_greedy_search
-    elif inference_alg_str == 'VSUSG':
+    elif inference_alg_str == 'VSUGS':
         inference_alg_fn = variational_sequential_updating_and_greedy_search
     elif inference_alg_str.startswith('DP-Means'):
         inference_alg_fn = dp_means
@@ -848,7 +848,6 @@ def sampling_hmc_gibbs(observations,
                     numpyro.distributions.DirichletMultinomial(
                         concentration=topics_concentrations[z]),
                     obs=obs)
-        raise NotImplementedError
 
     elif likelihood_model == 'multivariate_normal':
         # TODO: move into own function
