@@ -5,13 +5,12 @@ import os
 import pandas as pd
 import seaborn as sns
 
-from utils.plot import plot_inference_algs_num_clusters_by_param
-
 
 def plot_images_in_clusters(inference_alg_str: str,
                             concentration_param: float,
                             images: np.ndarray,
                             pca_images: np.ndarray,
+                            pca_proj_means: np.ndarray,
                             table_assignment_posteriors: np.ndarray,
                             table_assignment_posteriors_running_sum: np.ndarray,
                             plot_dir):
@@ -19,36 +18,60 @@ def plot_images_in_clusters(inference_alg_str: str,
     table_indices = np.arange(len(table_assignment_posteriors))
 
     # as a heuristic
-    confident_class_predictions = table_assignment_posteriors > 0.9
+    confident_class_predictions = table_assignment_posteriors > 0.95
     summed_confident_predictions_per_table = np.sum(confident_class_predictions, axis=0)
 
     plt.plot(table_indices, table_assignment_posteriors_running_sum[-1, :], label='Total Prob. Mass')
     plt.plot(table_indices, summed_confident_predictions_per_table, label='Confident Predictions')
     plt.ylabel('Prob. Mass at Table')
     plt.xlabel('Table Index')
+    plt.xlim(0, 150)
     plt.legend()
 
-    plt.savefig(os.path.join(plot_dir, '{}_alpha={:.2f}_mass_per_table.png'.format(inference_alg_str,
-                                                                                     concentration_param)),
+    plt.savefig(os.path.join(plot_dir,
+                             '{}_alpha={:.2f}_mass_per_table.png'.format(inference_alg_str,
+                                                                         concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
-    # plt.show()
+    plt.show()
     plt.close()
 
     table_indices_by_decreasing_summed_prob_mass = np.argsort(summed_confident_predictions_per_table)[::-1]
 
-    num_tables_to_plot = 6
+    num_rows = 6
     num_images_per_table = 11
-    fig, axes = plt.subplots(nrows=num_tables_to_plot, ncols=num_images_per_table,
-                             sharex=True, sharey=True)
-    for table_num in range(num_tables_to_plot):
-        table_idx = table_indices_by_decreasing_summed_prob_mass[table_num]
-        images_at_table = images[confident_class_predictions[:, table_idx]]
-        # pca_images_at_table = pca_images[confident_class_predictions[:, table_idx]]
+    num_rows = num_rows
+    num_cols = num_images_per_table + 2  # +2 for cluster means and blank column
+    fig, axes = plt.subplots(nrows=num_rows,
+                             ncols=num_cols,
+                             sharex=True,
+                             sharey=True)
+    axes[0, 0].set_title(f'Cluster Means')
+    for row_idx in range(num_rows):
+
+        table_idx = table_indices_by_decreasing_summed_prob_mass[row_idx]
+
+        # plot table's mean parameters
+        axes[row_idx, 0].imshow(pca_proj_means[table_idx], cmap='gray')
+
+        # turn off 2nd column
+        axes[row_idx, 1].axis('off')
+
+        # images_at_table = images[confident_class_predictions[:, table_idx]]
+        images_at_table = pca_images[confident_class_predictions[:, table_idx]]
+
         for image_num in range(num_images_per_table):
-            axes[table_num, image_num].imshow(images_at_table[image_num], cmap='gray')
-            if image_num == int(num_images_per_table / 2):
-                axes[table_num, image_num].set_title(f'Table: {1+table_num}')
+            try:
+                # use the last images. hopefully those are stable
+                axes[row_idx, 2 + image_num].imshow(images_at_table[-1 - image_num], cmap='gray')
+                if image_num == int((2 + num_images_per_table) / 2):
+                    # add 1 for cluster mean offset
+                    axes[row_idx, image_num].set_title(f'Table {row_idx+1} Observations')
+            except IndexError:
+                # draw empty white of the appropriate shape
+                # add 1 for cluster mean offset
+                # axes[row_idx, 1 + image_num].imshow(np.ones_like(images_at_table[0]), cmap='gray')
+                axes[row_idx, 2 + image_num].axis('off')
 
     # remove tick labels
     plt.setp(axes, xticks=[], yticks=[])
@@ -58,7 +81,6 @@ def plot_images_in_clusters(inference_alg_str: str,
                 dpi=300)
     # plt.show()
     plt.close()
-    # print(10)
 
 
 def plot_inference_results(omniglot_dataset_results: dict,
@@ -67,11 +89,21 @@ def plot_inference_results(omniglot_dataset_results: dict,
                            concentration_param: float,
                            plot_dir):
 
+    pca_proj_means = omniglot_dataset_results['pca'].inverse_transform(
+        inference_results['parameters']['means'])
+    height_and_also_width = int(np.sqrt(pca_proj_means.shape[1]))
+
+    pca_proj_means = np.reshape(pca_proj_means,
+                                newshape=(pca_proj_means.shape[0],
+                                          height_and_also_width,
+                                          height_and_also_width))
+
     plot_images_in_clusters(
         inference_alg_str=inference_alg_str,
         concentration_param=concentration_param,
         images=omniglot_dataset_results['images'],
         pca_images=omniglot_dataset_results['pca_images'],
+        pca_proj_means=pca_proj_means,
         table_assignment_posteriors=inference_results['table_assignment_posteriors'],
         table_assignment_posteriors_running_sum=inference_results['table_assignment_posteriors_running_sum'],
         plot_dir=plot_dir)
