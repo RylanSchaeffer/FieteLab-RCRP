@@ -29,10 +29,8 @@ class LeNet(nn.Module):
 
 
 def load_lenet(pretrained_lenet_path='utils/lenet_mnist_model.pth'):
-    # TODO: automatically download pretrained model from
-    # https://drive.google.com/drive/folders/1fn83DF14tWmit0RTKWRhPq5uVXt73e0h?usp=sharing
 
-    # Initialize the network
+    # Create the LeNet network
     lenet = LeNet()
 
     # Load or train LeNet
@@ -43,8 +41,8 @@ def load_lenet(pretrained_lenet_path='utils/lenet_mnist_model.pth'):
 
     # remove last layer with trick: set last layer weights to identity,
     # and set last layer bias to zeros
+    lenet.fc2.bias.data = torch.zeros(lenet.fc2.weight.data.shape[1])
     lenet.fc2.weight.data = torch.eye(lenet.fc2.weight.data.shape[1])
-    lenet.fc2.bias.data[:] = 0
     return lenet
 
 
@@ -101,6 +99,14 @@ def train_step(model, device, train_loader, optimizer, epoch, log_interval):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
+
+        # import matplotlib.pyplot as plt
+        # plt.hist(data.numpy().flatten())
+        # plt.show()
+
+        # plt.imshow(data.numpy()[0, 0], cmap='gray')
+        # plt.show()
+
         # MNIST is 28 x 28 between 0 and 1
         optimizer.zero_grad()
         output = model(data)

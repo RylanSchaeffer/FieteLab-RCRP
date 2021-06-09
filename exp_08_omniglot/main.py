@@ -17,7 +17,14 @@ import utils.plot
 def main():
 
     num_data = 1200
-    plot_dir = f'exp_08_omniglot/plots_cropped_pool_pc=20_data={num_data}'
+    feature_method = 'cnn'
+    center_crop = True
+    avg_pool = False
+    plot_dir = 'exp_08_omniglot/plots_method={}_{}_{}_data={}'.format(
+        feature_method,
+        'crop' if center_crop else 'nocrop',
+        'pool' if avg_pool else 'nopool',
+        num_data)
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
     torch.manual_seed(0)
@@ -25,8 +32,9 @@ def main():
     omniglot_dataset_results = utils.data.load_omniglot_dataset(
         data_dir='data',
         num_data=num_data,
-        center_crop=True,
-        avg_pool=True)
+        center_crop=center_crop,
+        avg_pool=avg_pool,
+        feature_extractor_method='cnn')
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(
@@ -46,11 +54,11 @@ def main():
 
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
-        omniglot_dataset_results['pca_latents'] = omniglot_dataset_results['pca_latents'][index_permutation]
+        omniglot_dataset_results['image_features'] = omniglot_dataset_results['image_features'][index_permutation]
         omniglot_dataset_results['assigned_table_seq'] = omniglot_dataset_results['assigned_table_seq'][index_permutation]
         dataset_by_dataset_idx[dataset_idx] = dict(
             assigned_table_seq=np.copy(omniglot_dataset_results['assigned_table_seq']),
-            observations=np.copy(omniglot_dataset_results['pca_latents']))
+            observations=np.copy(omniglot_dataset_results['image_features']))
 
         dataset_inference_algs_results = run_one_dataset(
             dataset_dir=dataset_dir,
@@ -74,16 +82,17 @@ def run_one_dataset(omniglot_dataset_results,
 
     inference_alg_strs = [
         # online algorithms
-        'R-CRP',
+        # 'R-CRP',
         # 'SUGS',  # deterministically select highest table assignment posterior
         # 'Online CRP',  # sample from table assignment posterior; potentially correct
-        # 'DP-Means (online)',  # deterministically select highest assignment posterior
+        'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
-        # 'DP-Means (offline)',
+        'DP-Means (offline)',
         # 'HMC-Gibbs (20000 Samples)',
         # 'SVI (20k Steps)',
         # 'Variational Bayes (15 Init, 30 Iter)',
     ]
+    print(f'Inference Algorithms: {inference_alg_strs}')
 
     inference_algs_results = {}
     for inference_alg_str in inference_alg_strs:
@@ -122,7 +131,7 @@ def run_and_plot_inference_alg(omniglot_dataset_results,
             start_time = timer()
             inference_alg_concentration_param_results = utils.inference.run_inference_alg(
                 inference_alg_str=inference_alg_str,
-                observations=omniglot_dataset_results['pca_latents'],
+                observations=omniglot_dataset_results['image_features'],
                 concentration_param=concentration_param,
                 likelihood_model='multivariate_normal',
                 learning_rate=1e0)

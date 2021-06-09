@@ -9,8 +9,6 @@ import seaborn as sns
 def plot_images_in_clusters(inference_alg_str: str,
                             concentration_param: float,
                             images: np.ndarray,
-                            pca_images: np.ndarray,
-                            pca_proj_means: np.ndarray,
                             table_assignment_posteriors: np.ndarray,
                             table_assignment_posteriors_running_sum: np.ndarray,
                             plot_dir):
@@ -47,30 +45,27 @@ def plot_images_in_clusters(inference_alg_str: str,
                              sharex=True,
                              sharey=True)
     axes[0, 0].set_title(f'Cluster Means')
+    axes[0, 2 + int(num_images_per_table / 2)].set_title('Observations')
+
     for row_idx in range(num_rows):
 
         table_idx = table_indices_by_decreasing_summed_prob_mass[row_idx]
 
         # plot table's mean parameters
-        axes[row_idx, 0].imshow(pca_proj_means[table_idx], cmap='gray')
+        # axes[row_idx, 0].imshow(pca_proj_means[table_idx], cmap='gray')
+        axes[row_idx, 0].axis('off')
 
-        # turn off 2nd column
+        # turn off 2nd column to have spacing between parameters and observations
         axes[row_idx, 1].axis('off')
 
         # images_at_table = images[confident_class_predictions[:, table_idx]]
-        images_at_table = pca_images[confident_class_predictions[:, table_idx]]
+        images_at_table = images[confident_class_predictions[:, table_idx], :, :]
 
         for image_num in range(num_images_per_table):
             try:
-                # use the last images. hopefully those are stable
+                # use the last images. hopefully those are more stable than early images
                 axes[row_idx, 2 + image_num].imshow(images_at_table[-1 - image_num], cmap='gray')
-                if image_num == int((2 + num_images_per_table) / 2):
-                    # add 1 for cluster mean offset
-                    axes[row_idx, image_num].set_title(f'Table {row_idx+1} Observations')
             except IndexError:
-                # draw empty white of the appropriate shape
-                # add 1 for cluster mean offset
-                # axes[row_idx, 1 + image_num].imshow(np.ones_like(images_at_table[0]), cmap='gray')
                 axes[row_idx, 2 + image_num].axis('off')
 
     # remove tick labels
@@ -79,7 +74,7 @@ def plot_images_in_clusters(inference_alg_str: str,
                                                                                      concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
-    # plt.show()
+    plt.show()
     plt.close()
 
 
@@ -89,21 +84,10 @@ def plot_inference_results(omniglot_dataset_results: dict,
                            concentration_param: float,
                            plot_dir):
 
-    pca_proj_means = omniglot_dataset_results['pca'].inverse_transform(
-        inference_results['parameters']['means'])
-    height_and_also_width = int(np.sqrt(pca_proj_means.shape[1]))
-
-    pca_proj_means = np.reshape(pca_proj_means,
-                                newshape=(pca_proj_means.shape[0],
-                                          height_and_also_width,
-                                          height_and_also_width))
-
     plot_images_in_clusters(
         inference_alg_str=inference_alg_str,
         concentration_param=concentration_param,
         images=omniglot_dataset_results['images'],
-        pca_images=omniglot_dataset_results['pca_images'],
-        pca_proj_means=pca_proj_means,
         table_assignment_posteriors=inference_results['table_assignment_posteriors'],
         table_assignment_posteriors_running_sum=inference_results['table_assignment_posteriors_running_sum'],
         plot_dir=plot_dir)
@@ -204,7 +188,7 @@ def plot_inference_results(omniglot_dataset_results: dict,
     # plt.show()
     plt.close()
 
-#
+
 # def plot_inference_algs_comparison(omniglot_dataset_results,
 #                                    inference_algs_results_by_dataset_idx: dict,
 #                                    sampled_permutation_indices_by_dataset_idx: dict,

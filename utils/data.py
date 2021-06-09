@@ -1,6 +1,5 @@
-import os
-
 import numpy as np
+import os
 import pandas as pd
 import sklearn.datasets
 from sklearn.decomposition import PCA
@@ -38,7 +37,6 @@ def generate_mixture_of_unigrams(num_topics: int,
                                  vocab_dim: int,
                                  dp_concentration_param: float,
                                  prior_over_topic_parameters: float):
-
     assert dp_concentration_param > 0
     assert prior_over_topic_parameters > 0
 
@@ -72,8 +70,10 @@ def generate_mixture_of_unigrams(num_topics: int,
     return mixture_of_unigrams
 
 
-def load_newsgroup_dataset(data_dir='data',
-                           num_data=None):
+def load_newsgroup_dataset(data_dir: str = 'data',
+                           num_data: int = None,
+                           num_features: int = 500,
+                           tfidf_or_counts: str = 'tfidf'):
     # categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
     categories = None  # set to None for all categories
 
@@ -95,15 +95,24 @@ def load_newsgroup_dataset(data_dir='data',
     true_cluster_labels = true_cluster_labels[:num_data]
     true_cluster_label_strs = true_cluster_label_strs[:num_data]
 
-    # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
-    # equivalent to CountVectorizer() + TfidfTransformer()
-    # for more info, see
-    # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
-    # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
-    tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
-        max_features=5000,  # Same as Lin 2013
-        sublinear_tf=False)
-    observations_tfidf = tfidf_vectorizer.fit_transform(observations)
+    if tfidf_or_counts == 'tfidf':
+        # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
+        # equivalent to CountVectorizer() + TfidfTransformer()
+        # for more info, see
+        # https://scikit-learn.org/stable/tutorial/text_analytics/working_with_text_data.html
+        # https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html#sphx-glr-auto-examples-text-plot-document-clustering-py
+        feature_extractor = sklearn.feature_extraction.text.TfidfVectorizer(
+            max_features=num_features,  # Lin 2013 used 5000
+            sublinear_tf=False,
+            use_idf=True,
+        )
+        observations_transformed = feature_extractor.fit_transform(observations)
+    elif tfidf_or_counts == 'counts':
+        feature_extractor = sklearn.feature_extraction.text.CountVectorizer(
+            max_features=num_features)
+        observations_transformed = feature_extractor.fit_transform(observations)
+    else:
+        raise ValueError
 
     # quoting from Lin NeurIPS 2013:
     # We pruned the vocabulary to 5000 words by removing stop words and
@@ -115,11 +124,11 @@ def load_newsgroup_dataset(data_dir='data',
     # https://stats.stackexchange.com/questions/271923/how-to-use-tfidf-vectors-with-multinomial-naive-bayes
     # https://stackoverflow.com/questions/43237286/how-can-we-use-tfidf-vectors-with-multinomial-naive-bayes
     newsgroup_dataset_results = dict(
-        observations_tfidf=observations_tfidf.toarray(),  # remove .toarray() to keep CSR matrix
+        observations_transformed=observations_transformed.toarray(),  # remove .toarray() to keep CSR matrix
         true_cluster_label_strs=true_cluster_label_strs,
         assigned_table_seq=true_cluster_labels,
-        tfidf_vectorizer=tfidf_vectorizer,
-        feature_names=tfidf_vectorizer.get_feature_names(),
+        feature_extractor=feature_extractor,
+        feature_names=feature_extractor.get_feature_names(),
     )
 
     return newsgroup_dataset_results
@@ -128,7 +137,9 @@ def load_newsgroup_dataset(data_dir='data',
 def load_omniglot_dataset(data_dir='data',
                           num_data: int = None,
                           center_crop: bool = True,
-                          avg_pool: bool = True):
+                          avg_pool: bool = True,
+                          feature_extractor_method: str = 'pca'):
+    assert feature_extractor_method in {'pca', 'cnn', 'vae'}
 
     # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
     transforms = [torchvision.transforms.ToTensor()]
@@ -136,7 +147,7 @@ def load_omniglot_dataset(data_dir='data',
         transforms.append(torchvision.transforms.CenterCrop((80, 80)))
     if avg_pool:
         transforms.append(torchvision.transforms.Lambda(
-                lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=9, stride=3)))
+            lambda x: torch.nn.functional.avg_pool2d(x, kernel_size=9, stride=3)))
 
     omniglot_dataset = torchvision.datasets.Omniglot(
         root=data_dir,
@@ -166,42 +177,68 @@ def load_omniglot_dataset(data_dir='data',
         # images.append(omniglot_dataset[0][0][0, :, :])
 
     images = torch.stack(images).numpy()
-    epsilon = 1e-3
-    # ensure all values between [epsilon, 1 - epsilon]
-    images[images > 1. - epsilon] = 1. - epsilon
-    images[images < epsilon] = epsilon
 
     # these might be swapped but I think height = width for omniglot
     _, image_height, image_width = images.shape
     labels = np.array(labels)
 
-    reshaped_images = np.reshape(images, newshape=(dataset_size, image_height * image_width))
-    pca = PCA(n_components=20)
-    pca_latents = pca.fit_transform(reshaped_images)
-    pca_images = np.reshape(pca.inverse_transform(pca_latents),
-                            newshape=(dataset_size, image_height, image_width))
-    cum_frac_var_explained = np.sum(pca.explained_variance_ratio_)
+    if feature_extractor_method == 'pca':
+        reshaped_images = np.reshape(images, newshape=(dataset_size, image_height * image_width))
+        pca = PCA(n_components=20)
+        pca_latents = pca.fit_transform(reshaped_images)
+        image_features = np.reshape(pca.inverse_transform(pca_latents),
+                                    newshape=(dataset_size, image_height, image_width))
+        feature_extractor = pca
+    elif feature_extractor_method == 'cnn':
+        # for some reason, omniglot uses 1 for background and 0 for stroke
+        # whereas MNIST uses 0 for background and 1 for stroke
+        # for consistency, we'll invert omniglot
+        images = 1. - images
+
+        from utils.omniglot_feature_extraction import load_lenet
+        lenet = load_lenet()
+
+        from skimage.transform import resize
+        downsized_images = np.stack([resize(image, output_shape=(28, 28))
+                                     for image in images])
+
+        # import matplotlib.pyplot as plt
+        # plt.imshow(downsized_images[0], cmap='gray')
+        # plt.title('Test Downsized Omniglot')
+        # plt.show()
+
+        # add channel dimension for CNN
+        reshaped_images = np.expand_dims(downsized_images, axis=1)
+
+        # make sure dropout is turned off
+        lenet.eval()
+        image_features = lenet(torch.from_numpy(reshaped_images)).detach().numpy()
+
+        feature_extractor = lenet
+
+    elif feature_extractor_method == 'vae':
+        raise NotImplementedError
+    else:
+        raise ValueError(f'Impermissible feature method: {feature_extractor_method}')
 
     # # visualize images if curious
     # import matplotlib.pyplot as plt
     # for idx in range(10):
-    #     plt.imshow(pca_images[idx], cmap='gray')
+    #     plt.imshow(image_features[idx], cmap='gray')
     #     plt.show()
 
     omniglot_dataset_results = dict(
         images=images,
         assigned_table_seq=labels,
-        pca=pca,
-        pca_latents=pca_latents,
-        pca_images=pca_images,
-        cum_frac_var_explained=cum_frac_var_explained,
+        feature_extractor_method=feature_extractor_method,
+        feature_extractor=feature_extractor,
+        image_features=image_features,
     )
 
     return omniglot_dataset_results
 
 
 def load_reddit_dataset(data_dir='data'):
-
     os.makedirs(data_dir, exist_ok=True)
 
     # possible other alternative datasets:
@@ -238,7 +275,7 @@ def load_reddit_dataset(data_dir='data'):
     tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
         max_features=5000,
         sublinear_tf=False)
-    observations_tfidf = tfidf_vectorizer.fit_transform(documents_text)
+    observations_transformed = tfidf_vectorizer.fit_transform(documents_text)
 
     # quoting from Lin NeurIPS 2013:
     # We pruned the vocabulary to 5000 words by removing stop words and
@@ -250,7 +287,7 @@ def load_reddit_dataset(data_dir='data'):
     # https://stats.stackexchange.com/questions/271923/how-to-use-tfidf-vectors-with-multinomial-naive-bayes
     # https://stackoverflow.com/questions/43237286/how-can-we-use-tfidf-vectors-with-multinomial-naive-bayes
     reddit_dataset_results = dict(
-        observations_tfidf=observations_tfidf.toarray(),  # remove .toarray() to keep CSR matrix
+        observations_transformed=observations_transformed.toarray(),  # remove .toarray() to keep CSR matrix
         true_cluster_label_strs=true_cluster_label_strs,
         assigned_table_seq=true_cluster_labels,
         tfidf_vectorizer=tfidf_vectorizer,
@@ -291,7 +328,6 @@ vectorized_sample_sequence_from_crp = np.vectorize(
 
 def sample_sequence_from_ibp(T: int,
                              alpha: float):
-
     # shape: (number of customers, number of dishes)
     # heuristic: 10 * expected number
     max_dishes = int(10 * alpha * np.sum(1 / (1 + np.arange(T))))
@@ -299,7 +335,6 @@ def sample_sequence_from_ibp(T: int,
 
     current_num_dishes = 0
     for t in range(T):
-
         # sample old dishes for new customer
         frac_prev_customers_sampling_dish = np.sum(customers_dishes_draw[:t, :], axis=0) / (t + 1)
         dishes_for_new_customer = np.random.binomial(n=1, p=frac_prev_customers_sampling_dish[np.newaxis, :])[0]
@@ -385,7 +420,6 @@ def sample_sequence_from_mixture_of_unigrams(seq_len: int = 450,
                                              vocab_dim: int = 8,
                                              doc_len: int = 120,
                                              unigram_params: dict = {}):
-
     mixture_of_unigrams = generate_mixture_of_unigrams(
         num_topics=num_topics,
         vocab_dim=vocab_dim,
