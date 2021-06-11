@@ -200,6 +200,7 @@ def likelihood_dirichlet_multinomial(torch_observation,
     assert_torch_no_nan_no_inf(log_likelihoods_per_latent)
     likelihoods_per_latent = torch.exp(log_likelihoods_per_latent)
 
+    # TODO: need to use ratio of likelihoods because blowing up
     return likelihoods_per_latent, log_likelihoods_per_latent
 
 
@@ -636,7 +637,7 @@ def recursive_crp(observations,
                     # we need to create extra dimensions of size 1 for broadcasting to work
                     # because param_tensor can have variable number of dimensions e.g. (num obs, obs dim)
                     # for mean vs (num obs, obs dim, obs dim) for covariance, we need to dynamically
-                    # add the corect number of dimensions
+                    # add the correct number of dimensions
                     reshaped_scaled_learning_rate = scaled_learning_rate.view(
                         [scaled_learning_rate.shape[0]] + [1 for _ in range(len(param_tensor.shape[1:]))])
                     if param_tensor.grad is None:
@@ -680,6 +681,10 @@ def recursive_crp(observations,
                 prev_table_posterior)
             assert torch.allclose(torch.sum(num_table_posteriors[obs_idx, :]), one_tensor)
 
+    # TODO: investigate how cluster parameters fall below initialization
+    # is gradient descent not correct?
+    # check that likelihood is maximized. Am I minimizing the likelihood? Where does the negative
+    # appear?   a
     bayesian_recursion_results = dict(
         table_assignment_priors=table_assignment_priors.numpy(),
         table_assignment_posteriors=table_assignment_posteriors.numpy(),

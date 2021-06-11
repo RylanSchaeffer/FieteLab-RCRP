@@ -137,7 +137,7 @@ def load_newsgroup_dataset(data_dir: str = 'data',
 def load_omniglot_dataset(data_dir='data',
                           num_data: int = None,
                           center_crop: bool = True,
-                          avg_pool: bool = True,
+                          avg_pool: bool = False,
                           feature_extractor_method: str = 'pca'):
     assert feature_extractor_method in {'pca', 'cnn', 'vae'}
 
@@ -165,17 +165,14 @@ def load_omniglot_dataset(data_dir='data',
     omniglot_dataloader = torch.utils.data.DataLoader(
         dataset=omniglot_dataset,
         batch_size=1,
-        shuffle=False,
-    )
+        shuffle=False)
 
     images, labels = [], []
     for image, label in omniglot_dataloader:
         labels.append(label)
         images.append(image[0, 0, :, :])
-
         # uncomment to deterministically append the first image
         # images.append(omniglot_dataset[0][0][0, :, :])
-
     images = torch.stack(images).numpy()
 
     # these might be swapped but I think height = width for omniglot
@@ -195,8 +192,8 @@ def load_omniglot_dataset(data_dir='data',
         # for consistency, we'll invert omniglot
         images = 1. - images
 
-        from utils.omniglot_feature_extraction import load_lenet
-        lenet = load_lenet()
+        from utils.omniglot_feature_extraction import cnn_load
+        lenet = cnn_load()
 
         from skimage.transform import resize
         downsized_images = np.stack([resize(image, output_shape=(28, 28))
@@ -217,7 +214,17 @@ def load_omniglot_dataset(data_dir='data',
         feature_extractor = lenet
 
     elif feature_extractor_method == 'vae':
-        raise NotImplementedError
+
+        from utils.omniglot_feature_extraction import vae_load
+        vae = vae_load(omniglot_dataset=omniglot_dataset)
+
+        # convert to Tensor and add channel
+        torch_images = torch.unsqueeze(torch.from_numpy(images), dim=1)
+        vae.eval()
+        # define the features as the VAE means
+        torch_image_features = vae(torch_images)['mu']
+        image_features = torch_image_features.detach().numpy()
+        feature_extractor = vae
     else:
         raise ValueError(f'Impermissible feature method: {feature_extractor_method}')
 
