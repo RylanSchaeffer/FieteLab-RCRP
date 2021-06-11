@@ -58,15 +58,15 @@ def run_one_dataset(dataset_dir,
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',  # deterministically select highest table assignment posterior
+        'SUGS',  # deterministically select highest table assignment posterior
         'Online CRP',  # sample from table assignment posterior; potentially correct
         'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         'DP-Means (offline)',
-        # 'HMC-Gibbs (5000 Samples)',
         'HMC-Gibbs (20000 Samples)',
+        # 'HMC-Gibbs (50000 Samples)',
         # 'SVI (25k Steps)',
-        'SVI (50k Steps)',
+        # 'SVI (50k Steps)',
         'Variational Bayes (15 Init, 30 Iter)',
         # 'Variational Bayes (5 Init, 30 Iter)',
         # 'Variational Bayes (1 Init, 8 Iter)',
