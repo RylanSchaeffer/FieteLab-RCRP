@@ -8,5 +8,6 @@ rcrp
 *.npz
 *.pkl
 *.csv
+*.pth
 *.joblib
 **/__pycache__/
