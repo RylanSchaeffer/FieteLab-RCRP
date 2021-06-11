@@ -222,8 +222,12 @@ def load_omniglot_dataset(data_dir='data',
         torch_images = torch.unsqueeze(torch.from_numpy(images), dim=1)
         vae.eval()
         # define the features as the VAE means
-        torch_image_features = vae(torch_images)['mu']
+        vae_result = vae(torch_images)
+        torch_image_features = vae_result['mu']
         image_features = torch_image_features.detach().numpy()
+
+
+
         feature_extractor = vae
     else:
         raise ValueError(f'Impermissible feature method: {feature_extractor_method}')
