@@ -16,14 +16,12 @@ import utils.plot
 
 def main():
 
-    num_data = 1200
-    feature_method = 'cnn'
+    num_data = 6400
+    feature_extractor_method = 'vae'
     center_crop = True
     avg_pool = False
-    plot_dir = 'exp_08_omniglot/plots_method={}_{}_{}_data={}'.format(
-        feature_method,
-        'crop' if center_crop else 'nocrop',
-        'pool' if avg_pool else 'nopool',
+    plot_dir = 'exp_08_omniglot/plots_method={}_data={}'.format(
+        feature_extractor_method,
         num_data)
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
@@ -34,7 +32,7 @@ def main():
         num_data=num_data,
         center_crop=center_crop,
         avg_pool=avg_pool,
-        feature_extractor_method='cnn')
+        feature_extractor_method=feature_extractor_method)
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(
@@ -82,9 +80,9 @@ def run_one_dataset(omniglot_dataset_results,
 
     inference_alg_strs = [
         # online algorithms
-        # 'R-CRP',
-        # 'SUGS',  # deterministically select highest table assignment posterior
-        # 'Online CRP',  # sample from table assignment posterior; potentially correct
+        'R-CRP',
+        'SUGS',  # deterministically select highest table assignment posterior
+        'Online CRP',  # sample from table assignment posterior; potentially correct
         'DP-Means (online)',  # deterministically select highest assignment posterior
         # offline algorithms
         'DP-Means (offline)',

@@ -34,18 +34,19 @@ def plot_images_in_clusters(inference_alg_str: str,
     plt.show()
     plt.close()
 
-    table_indices_by_decreasing_summed_prob_mass = np.argsort(summed_confident_predictions_per_table)[::-1]
+    table_indices_by_decreasing_summed_prob_mass = np.argsort(
+        table_assignment_posteriors_running_sum[-1, :])[::-1]
 
     num_rows = 6
     num_images_per_table = 11
     num_rows = num_rows
-    num_cols = num_images_per_table + 2  # +2 for cluster means and blank column
+    num_cols = num_images_per_table
     fig, axes = plt.subplots(nrows=num_rows,
                              ncols=num_cols,
                              sharex=True,
                              sharey=True)
     axes[0, 0].set_title(f'Cluster Means')
-    axes[0, 2 + int(num_images_per_table / 2)].set_title('Observations')
+    axes[0, int(num_images_per_table / 2)].set_title('Observations')
 
     for row_idx in range(num_rows):
 
@@ -53,20 +54,31 @@ def plot_images_in_clusters(inference_alg_str: str,
 
         # plot table's mean parameters
         # axes[row_idx, 0].imshow(pca_proj_means[table_idx], cmap='gray')
-        axes[row_idx, 0].axis('off')
-
-        # turn off 2nd column to have spacing between parameters and observations
-        axes[row_idx, 1].axis('off')
+        axes[row_idx, 0].set_ylabel(f'Cluster: {1 + row_idx}',
+                                    rotation=0,
+                                    labelpad=40)
+        # axes[row_idx, 0].axis('off')
 
         # images_at_table = images[confident_class_predictions[:, table_idx]]
-        images_at_table = images[confident_class_predictions[:, table_idx], :, :]
+        posteriors_at_table = table_assignment_posteriors[:, table_idx]
+        customer_indices_by_decreasing_prob_mass = np.argsort(
+            posteriors_at_table)[::-1]
 
         for image_num in range(num_images_per_table):
+            customer_idx = customer_indices_by_decreasing_prob_mass[image_num]
+            customer_mass = posteriors_at_table[customer_idx]
+            # only plot high confidence
+            # if customer_mass < 0.9:
+            #
+            # else:
             try:
-                # use the last images. hopefully those are more stable than early images
-                axes[row_idx, 2 + image_num].imshow(images_at_table[-1 - image_num], cmap='gray')
+                if customer_mass < 0.4:
+                    axes[row_idx, image_num].axis('off')
+                else:
+                    axes[row_idx, image_num].imshow(images[customer_idx], cmap='gray')
+                    axes[row_idx, image_num].set_title(f'{np.round(customer_mass, 2)}')
             except IndexError:
-                axes[row_idx, 2 + image_num].axis('off')
+                axes[row_idx, image_num].axis('off')
 
     # remove tick labels
     plt.setp(axes, xticks=[], yticks=[])
@@ -74,7 +86,7 @@ def plot_images_in_clusters(inference_alg_str: str,
                                                                                      concentration_param)),
                 bbox_inches='tight',
                 dpi=300)
-    plt.show()
+    # plt.show()
     plt.close()
 
 
