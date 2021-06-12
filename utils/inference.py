@@ -368,7 +368,12 @@ def online_crp(observations,
                 num_table_posteriors[obs_idx - 1, :obs_idx])
             # renormalize
             table_assignment_prior /= (concentration_param + obs_idx)
+
+            # sometimes, negative numbers like -3e-84 somehow sneak in. remove
+            table_assignment_prior[table_assignment_prior < 0.] = 0.
+
             assert torch.allclose(torch.sum(table_assignment_prior), one_tensor)
+            assert_torch_no_nan_no_inf(table_assignment_prior)
 
             # record latent prior
             table_assignment_priors[obs_idx, :len(table_assignment_prior)] = table_assignment_prior
@@ -383,11 +388,53 @@ def online_crp(observations,
             assert torch.all(~torch.isnan(likelihoods_per_latent[:obs_idx + 1]))
             assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
-            unnormalized_table_assignment_posterior = torch.multiply(
-                likelihoods_per_latent.detach(),
-                table_assignment_prior)
-            table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
-                unnormalized_table_assignment_posterior)
+            # unnormalized_table_assignment_posterior = torch.multiply(
+            #     likelihoods_per_latent.detach(),
+            #     table_assignment_prior)
+            # table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
+            #     unnormalized_table_assignment_posterior)
+            # assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
+
+            if torch.allclose(likelihoods_per_latent, torch.zeros(1)):
+                # print('Complex branch')
+                # we need to deal with numerical instability
+                # the problem is that if log likelihoods are large and negative e.g. -5000, then
+                # the likelihoods will all be 0. Consequently, multiplying the likelihoods and
+                # priors followed by normalizing produces all 0.
+                # the solution is to realize that th
+                table_assignment_log_prior = torch.log(table_assignment_prior)
+                table_assignment_log_numerator = torch.add(
+                    log_likelihoods_per_latent.detach(),
+                    table_assignment_log_prior)
+                max_table_assignment_log_numerator = torch.max(table_assignment_log_numerator)
+                diff_table_assignment_log_numerator = torch.subtract(
+                    table_assignment_log_numerator,
+                    max_table_assignment_log_numerator)
+
+                exp_summed_diff_table_assignment_log_numerator = torch.sum(torch.exp(
+                    diff_table_assignment_log_numerator))
+                log_normalization = max_table_assignment_log_numerator \
+                                    + torch.log(exp_summed_diff_table_assignment_log_numerator)
+
+                table_assignment_log_posterior = log_likelihoods_per_latent.detach() \
+                                                 + table_assignment_log_prior \
+                                                 - log_normalization
+                table_assignment_posterior = torch.exp(table_assignment_log_posterior)
+            else:
+                # print('Simple branch')
+                # if no numerical instability, go with the classic
+                # p(z|o, history) = p(o|z)p(z|history)/p(o|history)
+                unnormalized_table_assignment_posterior = torch.multiply(
+                    likelihoods_per_latent.detach(),
+                    table_assignment_prior)
+                table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
+                    unnormalized_table_assignment_posterior)
+
+            # sometimes, negative numbers like -3e-84 somehow sneak in. remove
+            table_assignment_posterior[table_assignment_posterior < 0.] = 0.
+
+            # check that posterior still close to 1.
+            assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
 
             # sample from table assignment posterior
             sampled_table_assignment = torch.distributions.categorical.Categorical(
@@ -620,7 +667,7 @@ def recursive_crp(observations,
                     log_normalization = max_table_assignment_log_numerator\
                                         + torch.log(exp_summed_diff_table_assignment_log_numerator)
 
-                    table_assignment_log_posterior = log_likelihoods_per_latent\
+                    table_assignment_log_posterior = log_likelihoods_per_latent.detach()\
                                                      + table_assignment_log_prior\
                                                      - log_normalization
                     table_assignment_posterior = torch.exp(table_assignment_log_posterior)
@@ -1088,6 +1135,12 @@ def sequential_updating_and_greedy_search(observations,
             table_assignment_prior /= (concentration_param + obs_idx)
             assert torch.allclose(torch.sum(table_assignment_prior), one_tensor)
 
+            # sometimes, negative numbers like -3e-84 somehow sneak in. remove
+            table_assignment_prior[table_assignment_prior < 0.] = 0.
+
+            assert torch.allclose(torch.sum(table_assignment_prior), one_tensor)
+            assert_torch_no_nan_no_inf(table_assignment_prior)
+
             # record latent prior
             table_assignment_priors[obs_idx, :len(table_assignment_prior)] = table_assignment_prior
 
@@ -1101,11 +1154,46 @@ def sequential_updating_and_greedy_search(observations,
             assert torch.all(~torch.isnan(likelihoods_per_latent[:obs_idx + 1]))
             assert torch.all(~torch.isnan(log_likelihoods_per_latent[:obs_idx + 1]))
 
-            unnormalized_table_assignment_posterior = torch.multiply(
-                likelihoods_per_latent.detach(),
-                table_assignment_prior)
-            table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
-                unnormalized_table_assignment_posterior)
+            if torch.allclose(likelihoods_per_latent, torch.zeros(1)):
+                # print('Complex branch')
+                # we need to deal with numerical instability
+                # the problem is that if log likelihoods are large and negative e.g. -5000, then
+                # the likelihoods will all be 0. Consequently, multiplying the likelihoods and
+                # priors followed by normalizing produces all 0.
+                # the solution is to realize that th
+                table_assignment_log_prior = torch.log(table_assignment_prior)
+                table_assignment_log_numerator = torch.add(
+                    log_likelihoods_per_latent.detach(),
+                    table_assignment_log_prior)
+                max_table_assignment_log_numerator = torch.max(table_assignment_log_numerator)
+                diff_table_assignment_log_numerator = torch.subtract(
+                    table_assignment_log_numerator,
+                    max_table_assignment_log_numerator)
+
+                exp_summed_diff_table_assignment_log_numerator = torch.sum(torch.exp(
+                    diff_table_assignment_log_numerator))
+                log_normalization = max_table_assignment_log_numerator \
+                                    + torch.log(exp_summed_diff_table_assignment_log_numerator)
+
+                table_assignment_log_posterior = log_likelihoods_per_latent.detach() \
+                                                 + table_assignment_log_prior \
+                                                 - log_normalization
+                table_assignment_posterior = torch.exp(table_assignment_log_posterior)
+            else:
+                # print('Simple branch')
+                # if no numerical instability, go with the classic
+                # p(z|o, history) = p(o|z)p(z|history)/p(o|history)
+                unnormalized_table_assignment_posterior = torch.multiply(
+                    likelihoods_per_latent.detach(),
+                    table_assignment_prior)
+                table_assignment_posterior = unnormalized_table_assignment_posterior / torch.sum(
+                    unnormalized_table_assignment_posterior)
+
+            # sometimes, negative numbers like -3e-84 somehow sneak in. remove
+            table_assignment_posterior[table_assignment_posterior < 0.] = 0.
+
+            # check that posterior still close to 1.
+            assert torch.allclose(torch.sum(table_assignment_posterior), one_tensor)
 
             # apply local MAP approximation
             max_idx = torch.argmax(table_assignment_posterior)

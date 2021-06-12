@@ -7,4 +7,3 @@ sshpass -v -p $password rsync -avh --exclude='*.joblib' rylansch@openmind7.mit.e
 #sshpass -v -p $password rsync -avh --exclude='*.joblib' rylansch@openmind7.mit.edu:/om2/user/rylansch/FieteLab-ddCRP/exp_03_reddit/plots/ exp_03_reddit/plots/
 sshpass -v -p $password rsync -avh --exclude='*.joblib' rylansch@openmind7.mit.edu:/om2/user/rylansch/FieteLab-ddCRP/exp_04_newsgroup/plots* exp_04_newsgroup/
 sshpass -v -p $password rsync -avh --exclude='*.joblib' rylansch@openmind7.mit.edu:/om2/user/rylansch/FieteLab-ddCRP/exp_08_omniglot/plots* exp_08_omniglot/
-sshpass -v -p $password rsync -avh --exclude='*.joblib' rylansch@openmind7.mit.edu:/om2/user/rylansch/FieteLab-ddCRP/utils/*.pth utils/

@@ -73,7 +73,10 @@ def generate_mixture_of_unigrams(num_topics: int,
 def load_newsgroup_dataset(data_dir: str = 'data',
                            num_data: int = None,
                            num_features: int = 500,
-                           tfidf_or_counts: str = 'tfidf'):
+                           tf_or_tfidf_or_counts: str = 'tfidf'):
+
+    assert tf_or_tfidf_or_counts in {'tf', 'tfidf', 'counts'}
+
     # categories = ['soc.religion.christian', 'comp.graphics', 'sci.med']
     categories = None  # set to None for all categories
 
@@ -95,7 +98,15 @@ def load_newsgroup_dataset(data_dir: str = 'data',
     true_cluster_labels = true_cluster_labels[:num_data]
     true_cluster_label_strs = true_cluster_label_strs[:num_data]
 
-    if tfidf_or_counts == 'tfidf':
+    if tf_or_tfidf_or_counts == 'tf':
+        feature_extractor = sklearn.feature_extraction.text.TfidfVectorizer(
+            max_features=num_features,  # Lin 2013 used 5000
+            sublinear_tf=False,
+            use_idf=False,
+        )
+        observations_transformed = feature_extractor.fit_transform(observations)
+
+    elif tf_or_tfidf_or_counts == 'tfidf':
         # convert documents' word counts to tf-idf (Term Frequency times Inverse Document Frequency)
         # equivalent to CountVectorizer() + TfidfTransformer()
         # for more info, see
@@ -107,7 +118,7 @@ def load_newsgroup_dataset(data_dir: str = 'data',
             use_idf=True,
         )
         observations_transformed = feature_extractor.fit_transform(observations)
-    elif tfidf_or_counts == 'counts':
+    elif tf_or_tfidf_or_counts == 'counts':
         feature_extractor = sklearn.feature_extraction.text.CountVectorizer(
             max_features=num_features)
         observations_transformed = feature_extractor.fit_transform(observations)
@@ -139,7 +150,7 @@ def load_omniglot_dataset(data_dir='data',
                           center_crop: bool = True,
                           avg_pool: bool = False,
                           feature_extractor_method: str = 'pca'):
-    assert feature_extractor_method in {'pca', 'cnn', 'vae'}
+    assert feature_extractor_method in {'pca', 'cnn', 'vae', 'vae_old'}
 
     # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
     transforms = [torchvision.transforms.ToTensor()]
@@ -214,6 +225,15 @@ def load_omniglot_dataset(data_dir='data',
         feature_extractor = lenet
 
     elif feature_extractor_method == 'vae':
+        # generated using https://github.com/jmtomczak/vae_vampprior
+
+        vae_data = np.load('data/omniglot_data.npz')
+        images = vae_data['images'][:num_data, :, :]
+        image_features = vae_data['latents'][:num_data, :]
+        labels = vae_data['targets'][:num_data]
+        feature_extractor = None
+
+    elif feature_extractor_method == 'vae_old':
 
         from utils.omniglot_feature_extraction import vae_load
         vae = vae_load(omniglot_dataset=omniglot_dataset)
@@ -225,8 +245,6 @@ def load_omniglot_dataset(data_dir='data',
         vae_result = vae(torch_images)
         torch_image_features = vae_result['mu']
         image_features = torch_image_features.detach().numpy()
-
-
 
         feature_extractor = vae
     else:
