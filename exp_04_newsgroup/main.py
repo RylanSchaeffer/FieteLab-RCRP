@@ -14,13 +14,19 @@ import utils.plot
 
 
 def main():
-    plot_dir = 'exp_04_newsgroup/plots'
+    num_data = 20000
+    num_features = 500
+    tf_or_tfidf_or_counts = 'counts'
+    plot_dir = f'exp_04_newsgroup/plots_obs={tf_or_tfidf_or_counts}_ndata={num_data}_nfeat={num_features}'
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
     torch.manual_seed(0)
 
     newsgroup_dataset_results = utils.data.load_newsgroup_dataset(
-        data_dir='data')
+        data_dir='data',
+        num_data=num_data,
+        num_features=num_features,
+        tf_or_tfidf_or_counts=tf_or_tfidf_or_counts)
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(
@@ -28,7 +34,7 @@ def main():
         plot_dir=plot_dir)
 
     num_obs = newsgroup_dataset_results['assigned_table_seq'].shape[0]
-    num_permutations = 3
+    num_permutations = 1
     inference_algs_results_by_dataset_idx = {}
     dataset_by_dataset_idx = {}
 
@@ -41,10 +47,10 @@ def main():
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
         newsgroup_dataset_results['assigned_table_seq'] = newsgroup_dataset_results['assigned_table_seq'][index_permutation]
-        newsgroup_dataset_results['observations_tfidf'] = newsgroup_dataset_results['observations_tfidf'][index_permutation]
+        newsgroup_dataset_results['observations_transformed'] = newsgroup_dataset_results['observations_transformed'][index_permutation]
         dataset_by_dataset_idx[dataset_idx] = dict(
             assigned_table_seq=np.copy(newsgroup_dataset_results['assigned_table_seq']),
-            observations=np.copy(newsgroup_dataset_results['observations_tfidf']))
+            observations=np.copy(newsgroup_dataset_results['observations_transformed']))
 
         dataset_inference_algs_results = run_one_dataset(
             dataset_dir=dataset_dir,
@@ -65,13 +71,13 @@ def run_one_dataset(newsgroup_dataset_results,
                     dataset_dir):
 
     concentration_params = np.linspace(0.1 * np.log(newsgroup_dataset_results['assigned_table_seq'].shape[0]),
-                                       10 * np.log(newsgroup_dataset_results['assigned_table_seq'].shape[0]),
-                                       11)
+                                       5 * np.log(newsgroup_dataset_results['assigned_table_seq'].shape[0]),
+                                       7)
 
     inference_alg_strs = [
         # online algorithms
-        # 'R-CRP',
-        # 'SUSG',  # deterministically select highest table assignment posterior
+        'R-CRP',
+        'SUGS',  # deterministically select highest table assignment posterior
         'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
         # 'HMC-Gibbs (5000 Samples)',
@@ -116,7 +122,7 @@ def run_and_plot_inference_alg(newsgroup_dataset_results,
             start_time = timer()
             inference_alg_concentration_param_results = utils.inference.run_inference_alg(
                 inference_alg_str=inference_alg_str,
-                observations=newsgroup_dataset_results['observations_tfidf'],
+                observations=newsgroup_dataset_results['observations_transformed'],
                 concentration_param=concentration_param,
                 likelihood_model='dirichlet_multinomial',
                 learning_rate=1e0)
