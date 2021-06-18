@@ -14,13 +14,18 @@ import utils.plot
 
 
 def main():
-    plot_dir = 'exp_03_language_modeling/plots'
+    num_data = 10000
+    num_features = 100
+    tf_or_tfidf_or_counts = 'counts'
+    plot_dir = f'exp_03_reddit/plots_obs={tf_or_tfidf_or_counts}_ndata={num_data}_nfeat={num_features}'
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
     torch.manual_seed(0)
 
     reddit_dataset_results = utils.data.load_reddit_dataset(
-        data_dir='data')
+        num_data=num_data,
+        num_features=num_features,
+        tf_or_tfidf_or_counts=tf_or_tfidf_or_counts)
 
     # plot number of topics versus number of posts
     utils.plot.plot_num_clusters_by_num_obs(

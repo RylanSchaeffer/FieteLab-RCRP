@@ -270,7 +270,12 @@ def load_omniglot_dataset(data_dir='data',
     return omniglot_dataset_results
 
 
-def load_reddit_dataset(data_dir='data'):
+def load_reddit_dataset(num_data,
+                        num_features,
+                        tf_or_tfidf_or_counts,
+                        data_dir='data'):
+
+    # TODO: rewrite this function to preprocess data similar to newsgroup
     os.makedirs(data_dir, exist_ok=True)
 
     # possible other alternative datasets:
@@ -283,14 +288,14 @@ def load_reddit_dataset(data_dir='data'):
     reddit_dataset, reddit_dataset_info = tfds.load(
         'reddit',
         split='train',  # [:1%]',
-        shuffle_files=True,
+        shuffle_files=False,
         download=True,
         with_info=True,
         data_dir=data_dir)
     assert isinstance(reddit_dataset, tf.data.Dataset)
     # reddit_dataframe = pd.DataFrame(reddit_dataset.take(10))
     reddit_dataframe = tfds.as_dataframe(
-        ds=reddit_dataset.take(1200),
+        ds=reddit_dataset.take(num_data),
         ds_info=reddit_dataset_info)
     reddit_dataframe = pd.DataFrame(reddit_dataframe)
 
