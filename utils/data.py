@@ -228,9 +228,12 @@ def load_omniglot_dataset(data_dir='data',
         # generated using https://github.com/jmtomczak/vae_vampprior
 
         vae_data = np.load('data/omniglot_data.npz')
-        images = vae_data['images'][:num_data, :, :]
-        image_features = vae_data['latents'][:num_data, :]
-        labels = vae_data['targets'][:num_data]
+        labels = vae_data['targets']
+        indices_to_sort_labels = np.argsort(labels)
+        # sort and truncate
+        labels = labels[indices_to_sort_labels][:num_data]
+        images = vae_data['images'][indices_to_sort_labels][:num_data, :, :]
+        image_features = vae_data['latents'][indices_to_sort_labels][:num_data, :]
         feature_extractor = None
 
     elif feature_extractor_method == 'vae_old':
