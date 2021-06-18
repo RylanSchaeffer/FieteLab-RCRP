@@ -41,10 +41,10 @@ def main():
         # generate permutation and reorder data
         index_permutation = np.random.permutation(np.arange(num_obs, dtype=np.int))
         reddit_dataset_results['assigned_table_seq'] = reddit_dataset_results['assigned_table_seq'][index_permutation]
-        reddit_dataset_results['observations_tfidf'] = reddit_dataset_results['observations_tfidf'][index_permutation]
+        reddit_dataset_results['observations_transformed'] = reddit_dataset_results['observations_transformed'][index_permutation]
         dataset_by_dataset_idx[dataset_idx] = dict(
             assigned_table_seq=np.copy(reddit_dataset_results['assigned_table_seq']),
-            observations=np.copy(reddit_dataset_results['observations_tfidf']))
+            observations=np.copy(reddit_dataset_results['observations_transformed']))
 
         dataset_inference_algs_results = run_one_dataset(
             dataset_dir=dataset_dir,
@@ -69,7 +69,7 @@ def run_one_dataset(reddit_dataset_results,
     inference_alg_strs = [
         # online algorithms
         # 'R-CRP',
-        # 'SUSG',  # deterministically select highest table assignment posterior
+        # 'SUGS',  # deterministically select highest table assignment posterior
         'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
         # 'HMC-Gibbs (5000 Samples)',
@@ -114,7 +114,7 @@ def run_and_plot_inference_alg(reddit_dataset_results,
             start_time = timer()
             inference_alg_concentration_param_results = utils.inference.run_inference_alg(
                 inference_alg_str=inference_alg_str,
-                observations=reddit_dataset_results['observations_tfidf'],
+                observations=reddit_dataset_results['observations_transformed'],
                 concentration_param=concentration_param,
                 likelihood_model='dirichlet_multinomial',
                 learning_rate=1e0)
