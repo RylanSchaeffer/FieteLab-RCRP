@@ -20,7 +20,7 @@ def main():
     feature_extractor_method = 'vae'
     center_crop = True
     avg_pool = False
-    plot_dir = 'exp_08_omniglot/plots_method={}_data={}'.format(
+    plot_dir = 'exp_08_omniglot/plots_method={}_data={}_dense'.format(
         feature_extractor_method,
         num_data)
     os.makedirs(plot_dir, exist_ok=True)
@@ -88,7 +88,7 @@ def run_one_dataset(omniglot_dataset_results,
         'DP-Means (offline)',
         # 'HMC-Gibbs (20000 Samples)',
         # 'SVI (20k Steps)',
-        # 'Variational Bayes (15 Init, 30 Iter)',
+        'Variational Bayes (15 Init, 30 Iter)',
     ]
     print(f'Inference Algorithms: {inference_alg_strs}')
 

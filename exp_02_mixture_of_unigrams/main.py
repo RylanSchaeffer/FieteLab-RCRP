@@ -13,7 +13,7 @@ def main():
     os.makedirs(plot_dir, exist_ok=True)
     np.random.seed(1)
 
-    num_datasets = 10
+    num_datasets = 5
     inference_algs_results_by_dataset = {}
     sampled_mou_results_by_dataset_idx = {}
 
@@ -24,7 +24,6 @@ def main():
         os.makedirs(dataset_dir, exist_ok=True)
         dataset_inference_algs_results, dataset_sampled_mix_of_unigrams_results = run_one_dataset(
             dataset_dir=dataset_dir)
-
         inference_algs_results_by_dataset[dataset_idx] = dataset_inference_algs_results
         sampled_mou_results_by_dataset_idx[dataset_idx] = dataset_sampled_mix_of_unigrams_results
 
@@ -54,12 +53,10 @@ def run_one_dataset(dataset_dir,
     inference_alg_strs = [
         # online algorithms
         'R-CRP',
-        'SUSG',  # deterministically select highest table assignment posterior
+        'SUGS',  # deterministically select highest table assignment posterior
         'Online CRP',  # sample from table assignment posterior; potentially correct
         # offline algorithms
-        'HMC-Gibbs (5000 Samples)',
         'HMC-Gibbs (20000 Samples)',
-        'SVI (5k Steps)',
         'SVI (20k Steps)',
     ]
 
