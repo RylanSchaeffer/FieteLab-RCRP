@@ -1,6 +1,6 @@
 # Efficient Online Inference for Nonparametric Mixture Time Series
 
-This code corresponds to our [UAI 2021](https://www.auai.org/uai2021/) paper.
+This code corresponds to our [UAI 2021](https://proceedings.mlr.press/v161/schaeffer21a/schaeffer21a.pdf) paper.
 In this paper, we provide an efficient streaming inference algorithm
 for infinite mixture models using a novel Bayesian recursion on the Chinese
 Restaurant Process.
